@@ -1,0 +1,29 @@
+{
+  "type": "object",
+  "properties": {
+    "claim_id": {
+      "type": "string"
+    },
+    "document_id": {
+      "type": "string"
+    },
+    "document_version": {
+      "type": "string"
+    },
+    "text": {
+      "type": "string"
+    },
+    "chapter": {
+      "type": "string"
+    },
+    "section": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "confidence": {
+      "type": "number"
+    }
+  }
+}

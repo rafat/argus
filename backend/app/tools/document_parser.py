@@ -15,7 +15,10 @@ def _heading_level(text: str) -> int | None:
     if re.match(r"^(chapter|part)\s+[\w.-]+", text, re.I):
         return 1
     if re.match(r"^\d+(?:\.\d+)*[.)]?\s+\S", text):
-        return text.split()[0].rstrip(".)").count(".") + 1
+        level = text.split()[0].rstrip(".)").count(".") + 1
+        if level == 1 and len(text) > 80:
+            return None
+        return level
     return None
 
 
@@ -63,7 +66,10 @@ def parse_document(data: bytes, filename: str, document_id: str, version_id: str
         from pypdf import PdfReader
 
         reader = PdfReader(io.BytesIO(data))
-        blocks = [(page.extract_text() or "") for page in reader.pages]
+        blocks = []
+        for page in reader.pages:
+            text = page.extract_text() or ""
+            blocks.extend(text.splitlines())
     elif suffix == "docx":
         from docx import Document
 

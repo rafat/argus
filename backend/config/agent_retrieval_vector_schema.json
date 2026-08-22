@@ -1,0 +1,7 @@
+{
+  "claim_embedding": {
+    "denseVector": {
+      "dimensions": 3072
+    }
+  }
+}

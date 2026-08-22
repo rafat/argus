@@ -1,0 +1,10 @@
+{
+  "claim_id": "argus-test-claim-001",
+  "document_id": "argus-test-document",
+  "document_version": "v1",
+  "text": "Algorithmic recommendation systems systematically increase political polarization by amplifying emotionally charged content.",
+  "chapter": "Test Chapter",
+  "section": "Test Section",
+  "status": "supported",
+  "confidence": 0.95
+}

@@ -32,7 +32,7 @@ def test_adk_workflows_build_graphs():
     assert document_workflow.name == "document_workflow"
     assert "extraction_agent" in {node.name for node in chunk_workflow.graph.nodes}
     assert [node.name for node in document_workflow.graph.nodes] == [
-        "__START__", "parse_document", "extract_chunks", "persist_claims"
+        "__START__", "parse_document", "extract_chunks", "generate_embeddings", "persist_claims"
     ]
 
 

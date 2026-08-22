@@ -1,0 +1,103 @@
+.
+├── app
+│   ├── __init__.py
+│   ├── __pycache__
+│   │   ├── __init__.cpython-311.pyc
+│   │   ├── __init__.cpython-312.pyc
+│   │   ├── extract_cli.cpython-311.pyc
+│   │   ├── extract_cli.cpython-312.pyc
+│   │   ├── firestore_test.cpython-311-pytest-9.1.1.pyc
+│   │   ├── firestore_test.cpython-311.pyc
+│   │   ├── firestore_test.cpython-312-pytest-9.0.2.pyc
+│   │   ├── firestore_test.cpython-312.pyc
+│   │   ├── gemini_test.cpython-311-pytest-9.1.1.pyc
+│   │   ├── gemini_test.cpython-311.pyc
+│   │   ├── gemini_test.cpython-312-pytest-9.0.2.pyc
+│   │   ├── gemini_test.cpython-312.pyc
+│   │   ├── main.cpython-311.pyc
+│   │   └── main.cpython-312.pyc
+│   ├── agents
+│   │   ├── __pycache__
+│   │   │   ├── conflict.cpython-311.pyc
+│   │   │   ├── extraction.cpython-311.pyc
+│   │   │   └── extraction.cpython-312.pyc
+│   │   ├── conflict.py
+│   │   └── extraction.py
+│   ├── extract_cli.py
+│   ├── firestore_inspect.py
+│   ├── firestore_test.py
+│   ├── gemini_test.py
+│   ├── main.py
+│   ├── models
+│   │   ├── __pycache__
+│   │   │   ├── claim.cpython-311.pyc
+│   │   │   ├── claim.cpython-312.pyc
+│   │   │   ├── conflict.cpython-311.pyc
+│   │   │   ├── conflict.cpython-312.pyc
+│   │   │   ├── document.cpython-311.pyc
+│   │   │   └── document.cpython-312.pyc
+│   │   ├── claim.py
+│   │   ├── conflict.py
+│   │   └── document.py
+│   ├── nodes
+│   │   ├── __pycache__
+│   │   │   ├── parsing.cpython-311.pyc
+│   │   │   ├── persistence.cpython-311.pyc
+│   │   │   └── validation.cpython-311.pyc
+│   │   ├── parsing.py
+│   │   ├── persistence.py
+│   │   └── validation.py
+│   ├── scripts
+│   │   ├── create_agent_retrieval_test_object.py
+│   │   ├── create_vector_endpoint.py
+│   │   ├── create_vector_index.py
+│   │   └── deploy_vector_index.py
+│   ├── tests
+│   │   ├── __pycache__
+│   │   │   ├── test_conflict_agent.cpython-311-pytest-9.1.1.pyc
+│   │   │   ├── test_document_workflow_integration.cpython-311-pytest-9.1.1.pyc
+│   │   │   ├── test_document_workflow_integration.cpython-312-pytest-9.0.2.pyc
+│   │   │   ├── test_document_workflow.cpython-311-pytest-9.1.1.pyc
+│   │   │   ├── test_document_workflow.cpython-311.pyc
+│   │   │   ├── test_document_workflow.cpython-312-pytest-9.0.2.pyc
+│   │   │   ├── test_document_workflow.cpython-312.pyc
+│   │   │   ├── test_firestore.cpython-311-pytest-9.1.1.pyc
+│   │   │   ├── test_firestore.cpython-312-pytest-9.0.2.pyc
+│   │   │   ├── test_graph_api.cpython-311-pytest-9.1.1.pyc
+│   │   │   └── test_vector_search.cpython-311-pytest-9.1.1.pyc
+│   │   ├── argus_test.docx
+│   │   ├── structured_chapter_document.pdf
+│   │   ├── test_conflict_agent.py
+│   │   ├── test_document_workflow_integration.py
+│   │   ├── test_document_workflow.py
+│   │   ├── test_firestore.py
+│   │   ├── test_graph_api.py
+│   │   └── test_vector_search.py
+│   ├── tools
+│   │   ├── __pycache__
+│   │   │   ├── document_parser.cpython-311.pyc
+│   │   │   ├── document_parser.cpython-312.pyc
+│   │   │   ├── firestore.cpython-311.pyc
+│   │   │   ├── firestore.cpython-312.pyc
+│   │   │   ├── storage.cpython-311.pyc
+│   │   │   ├── storage.cpython-312.pyc
+│   │   │   └── vector_search.cpython-311.pyc
+│   │   ├── document_parser.py
+│   │   ├── firestore.py
+│   │   ├── storage.py
+│   │   └── vector_search.py
+│   └── workflows
+│       ├── __pycache__
+│       │   ├── document_workflow.cpython-311.pyc
+│       │   └── document_workflow.cpython-312.pyc
+│       └── document_workflow.py
+├── config
+│   ├── agent_retrieval_data_schema.json
+│   └── agent_retrieval_vector_schema.json
+├── Procfile
+├── project-structure.txt
+├── pytest.ini
+├── requirements.txt
+└── vector-index-metadata.json
+
+17 directories, 84 files
