@@ -10,7 +10,6 @@ export default function ConflictEdge({
   sourcePosition,
   targetPosition,
   style = {},
-  markerEnd,
   data,
   selected,
 }) {
@@ -34,13 +33,13 @@ export default function ConflictEdge({
     animation: isHighSeverity ? 'dash 1.5s linear infinite' : undefined,
   };
 
+  // Render without directional arrows (markerEnd omitted) as contradiction is symmetric
   return (
     <path
       id={id}
       style={edgeStyle}
       className={`react-flow__edge-path conflict-edge ${isHighSeverity ? 'animated-edge' : ''}`}
       d={edgePath}
-      markerEnd={markerEnd}
     />
   );
 }

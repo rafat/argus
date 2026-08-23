@@ -75,7 +75,22 @@ class FirestoreRepository:
             return None
         return DocumentRecord.model_validate(snapshot.to_dict())
 
-    def get_claims(self, document_id: str) -> list[Claim]:
+    def list_documents(self) -> list[DocumentRecord]:
+        """
+        List all canonical document records in Firestore.
+        """
+        docs_ref = self.db.collection("documents")
+        documents = []
+        for doc in docs_ref.stream():
+            data = doc.to_dict()
+            if "id" not in data:
+                data["id"] = doc.id
+            documents.append(DocumentRecord.model_validate(data))
+        # Sort by creation date descending
+        documents.sort(key=lambda d: d.created_at, reverse=True)
+        return documents
+
+    def get_document_claims(self, document_id: str) -> list[Claim]:
         """
         Retrieve all claims for a given document_id.
         """

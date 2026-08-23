@@ -131,7 +131,7 @@ def test_firestore_repository_get_methods():
     assert doc.id == "doc-1"
     assert doc.status == "processed"
 
-    claims = repo.get_claims("doc-1")
+    claims = repo.get_document_claims("doc-1")
     assert len(claims) == 1
     assert claims[0].id == "claim-1"
     assert claims[0].text == "Claim 1"
@@ -140,28 +140,6 @@ def test_firestore_repository_get_methods():
     assert len(conflicts) == 1
     assert conflicts[0].id == "conflict-1"
     assert conflicts[0].severity == "high"
-
-def test_save_conflicts():
-    repository = FirestoreRepository(
-        client=FakeFirestoreClient(),
-    )
-
-    conflict = Conflict(
-        id="conflict-1",
-        document_id="doc-1",
-        claim_a_id="claim-a",
-        claim_b_id="claim-b",
-        claim_a_text="Claim A",
-        claim_b_text="Claim B",
-        explanation="The claims assert opposite outcomes.",
-        severity="high",
-        confidence=0.95,
-    )
-
-    repository.save_conflicts(
-        "doc-1",
-        [conflict],
-    )
 
 def test_save_conflicts():
     repository = FirestoreRepository(

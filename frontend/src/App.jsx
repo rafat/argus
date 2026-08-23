@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useRef, useState, useEffect } from 'react';
 import ReactFlow, {
   Background,
   Controls,
@@ -30,6 +30,7 @@ function App() {
     isProcessing,
     uploadStatus,
     error,
+    fetchDocuments,
     selectDocument,
     uploadDocument,
     setSelectedNode,
@@ -38,6 +39,15 @@ function App() {
   } = useArgusStore();
 
   const fileInputRef = useRef(null);
+  
+  // Graph Filters state
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [severityFilter, setSeverityFilter] = useState('all');
+
+  // Load documents list from backend on mount for persistence across reloads
+  useEffect(() => {
+    fetchDocuments();
+  }, [fetchDocuments]);
 
   // File upload trigger
   const handleUploadClick = () => {
@@ -76,6 +86,65 @@ function App() {
   const unsubstantiatedClaims = graphData.nodes.filter(
     (n) => n.data?.status === 'unsubstantiated'
   ).length;
+
+  // --- Graph Dimming & Highlighting Logic (Day 4G) ---
+  const hasSelection = !!selectedNode || !!selectedEdge;
+
+  // Process nodes: Filter by status, then apply dimming if there is an active selection
+  const processedNodes = graphData.nodes
+    .filter((node) => {
+      if (statusFilter === 'supported') return node.data?.status === 'supported';
+      if (statusFilter === 'unsubstantiated') return node.data?.status === 'unsubstantiated';
+      return true;
+    })
+    .map((node) => {
+      let isDimmed = false;
+      if (hasSelection) {
+        if (selectedNode) {
+          // Highlight ONLY the selected claim node
+          isDimmed = selectedNode.id !== node.id;
+        } else if (selectedEdge) {
+          // Highlight BOTH claims involved in the selected conflict edge
+          isDimmed = selectedEdge.source !== node.id && selectedEdge.target !== node.id;
+        }
+      }
+      return {
+        ...node,
+        style: {
+          ...node.style,
+          opacity: isDimmed ? 0.25 : 1.0,
+          pointerEvents: isDimmed ? 'none' : 'auto',
+          transition: 'opacity 0.2s ease',
+        },
+      };
+    });
+
+  // Process edges: Filter by severity, then apply dimming if there is an active selection
+  const processedEdges = graphData.edges
+    .filter((edge) => {
+      if (severityFilter === 'all') return true;
+      return edge.data?.severity === severityFilter;
+    })
+    .map((edge) => {
+      let isDimmed = false;
+      if (hasSelection) {
+        if (selectedEdge) {
+          // Highlight ONLY the selected conflict edge
+          isDimmed = selectedEdge.id !== edge.id;
+        } else if (selectedNode) {
+          // Highlight edges that are directly connected to the selected claim node
+          isDimmed = edge.source !== selectedNode.id && edge.target !== selectedNode.id;
+        }
+      }
+      return {
+        ...edge,
+        style: {
+          ...edge.style,
+          opacity: isDimmed ? 0.15 : 1.0,
+          transition: 'opacity 0.2s ease',
+        },
+      };
+    });
 
   return (
     <div className="app-container">
@@ -121,6 +190,38 @@ function App() {
               <div>Total Claims: <strong>{totalClaims}</strong></div>
               <div>Conflicts: <strong style={{ color: 'var(--color-danger)' }}>{totalConflicts}</strong></div>
               <div>Needs Evidence: <strong style={{ color: 'var(--color-warning)' }}>{unsubstantiatedClaims}</strong></div>
+            </div>
+          </div>
+        )}
+
+        {/* Graph Filters Section (Day 4G) */}
+        {selectedDocumentId && (
+          <div className="sidebar-section">
+            <h3 className="sidebar-section-title">Graph Filters</h3>
+            <div className="filter-group">
+              <label className="filter-label">Claims Filter</label>
+              <select 
+                value={statusFilter} 
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="filter-select"
+              >
+                <option value="all">All Claims</option>
+                <option value="supported">✓ Supported Only</option>
+                <option value="unsubstantiated">⚠ Needs Evidence Only</option>
+              </select>
+            </div>
+            <div className="filter-group" style={{ marginTop: '12px' }}>
+              <label className="filter-label">Severity Filter</label>
+              <select 
+                value={severityFilter} 
+                onChange={(e) => setSeverityFilter(e.target.value)}
+                className="filter-select"
+              >
+                <option value="all">All Severities</option>
+                <option value="high">High Severity Only</option>
+                <option value="medium">Medium Severity Only</option>
+                <option value="low">Low Severity Only</option>
+              </select>
             </div>
           </div>
         )}
@@ -178,8 +279,8 @@ function App() {
 
         {selectedDocumentId ? (
           <ReactFlow
-            nodes={graphData.nodes}
-            edges={graphData.edges}
+            nodes={processedNodes}
+            edges={processedEdges}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
             onNodeClick={onNodeClick}
@@ -268,7 +369,7 @@ function App() {
               <span className="details-location" style={{ color: 'var(--color-danger)' }}>
                 CONTRADICTION &bull; SEVERITY: {selectedEdge.data?.severity?.toUpperCase() || 'HIGH'}
               </span>
-              <h2 className="details-title">Argument conflict</h2>
+              <h2 className="details-title">Argument Conflict</h2>
             </div>
 
             <div className="details-section">

@@ -445,3 +445,46 @@ body {
     stroke-dashoffset: -20;
   }
 }
+
+/* Graph Filters Styling */
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.filter-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.filter-select {
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-main);
+  padding: 8px 10px;
+  font-size: 13px;
+  width: 100%;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.filter-select:focus {
+  border-color: var(--color-primary-accent);
+}
+
+.node-conflict-count {
+  background-color: rgba(239, 68, 68, 0.15);
+  color: var(--color-danger);
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+

@@ -8,7 +8,7 @@ const ClaimNode = ({ data, selected }) => {
 
   // Scale node size based on centrality
   const scaleStyle = {
-    transform: `scale(${1 + (data.centrality || 0) * 0.2})`,
+    transform: `scale(${1 + (data.centrality || 0) * 0.25})`,
     transition: 'transform 0.2s ease',
   };
 
@@ -27,7 +27,7 @@ const ClaimNode = ({ data, selected }) => {
       <div className="node-header">
         <span className="node-location">{data.chapter || 'Section'} &bull; {data.section || 'General'}</span>
         <span className={`node-badge ${isSupported ? 'badge-supported' : 'badge-unsubstantiated'}`}>
-          {isSupported ? 'Supported' : 'Needs Evidence'}
+          {isSupported ? '✓ Supported' : '⚠ Needs Evidence'}
         </span>
       </div>
       
@@ -37,7 +37,14 @@ const ClaimNode = ({ data, selected }) => {
 
       <div className="node-footer">
         <span className="node-centrality">Centrality: {((data.centrality || 0) * 100).toFixed(0)}%</span>
-        {data.open_questions && data.open_questions.length > 0 && (
+        
+        {data.conflict_count > 0 && (
+          <span className="node-conflict-count" title={`${data.conflict_count} logical conflicts`}>
+            🔴 {data.conflict_count} conflict{data.conflict_count > 1 ? 's' : ''}
+          </span>
+        )}
+
+        {data.open_questions && data.open_questions.length > 0 && data.conflict_count === 0 && (
           <span className="node-alert-icon" title={`${data.open_questions.length} open questions`}>
             ❓ {data.open_questions.length}
           </span>
