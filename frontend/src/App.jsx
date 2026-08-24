@@ -36,6 +36,10 @@ function App() {
     setSelectedNode,
     setSelectedEdge,
     clearSelection,
+    coachingChat,
+    isCoachingLoading,
+    sendCoachingMessage,
+    clearCoachingChat,
   } = useArgusStore();
 
   const fileInputRef = useRef(null);
@@ -43,6 +47,24 @@ function App() {
   // Graph Filters state
   const [statusFilter, setStatusFilter] = useState('all');
   const [severityFilter, setSeverityFilter] = useState('all');
+
+  // Socratic Coaching active states & scroll references
+  const [activeTab, setActiveTab] = useState('details');
+  const [chatInput, setChatInput] = useState('');
+  const chatEndRef = useRef(null);
+
+  // Auto-scroll chat console when new messages arrive
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [coachingChat]);
+
+  // Reset tab to Details when node or edge selection changes
+  useEffect(() => {
+    setActiveTab('details');
+  }, [selectedNode, selectedEdge]);
+
 
   // Load documents list from backend on mount for persistence across reloads
   useEffect(() => {
@@ -307,94 +329,231 @@ function App() {
         )}
       </main>
 
-      {/* 4. Details Pane */}
+      {/* 4. Details & Coaching Pane */}
       <section className="app-details">
-        {selectedNode ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <div className="details-header">
-              <span className="details-location">
-                {selectedNode.data?.chapter || 'Chapter'} &bull; {selectedNode.data?.section || 'Section'}
-              </span>
-              <h2 className="details-title">Claim Highlight</h2>
-            </div>
-
-            <div className="details-section">
-              <span className="details-section-title">Extracted Text</span>
-              <div className="details-text-box">{selectedNode.data?.text}</div>
-            </div>
-
-            <div className="details-section">
-              <span className="details-section-title">Cited Evidence</span>
-              {selectedNode.data?.evidence_cited && selectedNode.data.evidence_cited.length > 0 ? (
-                <ul className="details-list">
-                  {selectedNode.data.evidence_cited.map((evidence, idx) => (
-                    <li key={idx} className="details-list-item">{evidence}</li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="details-text-box" style={{ color: 'var(--color-warning)', borderStyle: 'dashed' }}>
-                  No explicit external evidence cited in this draft.
-                </div>
-              )}
-            </div>
-
-            <div className="details-section">
-              <span className="details-section-title">Open Questions</span>
-              {selectedNode.data?.open_questions && selectedNode.data.open_questions.length > 0 ? (
-                <ul className="details-list">
-                  {selectedNode.data.open_questions.map((q, idx) => (
-                    <li key={idx} className="details-list-item" style={{ color: '#fbcfe8' }}>{q}</li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="details-text-box" style={{ color: 'var(--text-muted)' }}>
-                  No unresolved structural questions detected.
-                </div>
-              )}
-            </div>
-
-            <div className="socratic-coaching-box">
-              <span className="socratic-title">💡 Socratic Coaching Partner</span>
-              <p className="socratic-text">
-                Explore structural weaknesses, expand missing assumptions, or challenge other parts of your draft.
-              </p>
-              <button className="socratic-btn" onClick={() => alert("Socratic team activation coming on Day 5!")}>
-                Trigger Socratic Team
+        {selectedNode || selectedEdge ? (
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+            {/* Tab Navigation */}
+            <div className="details-tabs">
+              <button
+                className={`tab-btn ${activeTab === 'details' ? 'active' : ''}`}
+                onClick={() => setActiveTab('details')}
+              >
+                🔍 Analysis
+              </button>
+              <button
+                className={`tab-btn ${activeTab === 'coaching' ? 'active' : ''}`}
+                onClick={() => setActiveTab('coaching')}
+              >
+                💡 Socratic
               </button>
             </div>
-          </div>
-        ) : selectedEdge ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <div className="details-header">
-              <span className="details-location" style={{ color: 'var(--color-danger)' }}>
-                CONTRADICTION &bull; SEVERITY: {selectedEdge.data?.severity?.toUpperCase() || 'HIGH'}
-              </span>
-              <h2 className="details-title">Argument Conflict</h2>
-            </div>
 
-            <div className="details-section">
-              <span className="details-section-title">Socratic Explanation</span>
-              <div className="details-text-box" style={{ borderColor: 'rgba(239, 68, 68, 0.25)', borderLeft: '4px solid var(--color-danger)' }}>
-                {selectedEdge.data?.explanation || 'A direct logical conflict was verified between these claims.'}
+            {/* Tab Content */}
+            {activeTab === 'details' ? (
+              selectedNode ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', overflowY: 'auto', flex: 1 }}>
+                  <div className="details-header">
+                    <span className="details-location">
+                      {selectedNode.data?.chapter || 'Chapter'} &bull; {selectedNode.data?.section || 'Section'}
+                    </span>
+                    <h2 className="details-title">Claim Highlight</h2>
+                  </div>
+
+                  <div className="details-section">
+                    <span className="details-section-title">Extracted Text</span>
+                    <div className="details-text-box">{selectedNode.data?.text}</div>
+                  </div>
+
+                  <div className="details-section">
+                    <span className="details-section-title">Cited Evidence</span>
+                    {selectedNode.data?.evidence_cited && selectedNode.data.evidence_cited.length > 0 ? (
+                      <ul className="details-list">
+                        {selectedNode.data.evidence_cited.map((evidence, idx) => (
+                          <li key={idx} className="details-list-item">{evidence}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div className="details-text-box" style={{ color: 'var(--color-warning)', borderStyle: 'dashed' }}>
+                        No explicit external evidence cited in this draft.
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="details-section">
+                    <span className="details-section-title">Open Questions</span>
+                    {selectedNode.data?.open_questions && selectedNode.data.open_questions.length > 0 ? (
+                      <ul className="details-list">
+                        {selectedNode.data.open_questions.map((q, idx) => (
+                          <li key={idx} className="details-list-item" style={{ color: '#fbcfe8' }}>{q}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div className="details-text-box" style={{ color: 'var(--text-muted)' }}>
+                        No unresolved structural questions detected.
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="socratic-coaching-box">
+                    <span className="socratic-title">💡 Socratic Coaching Partner</span>
+                    <p className="socratic-text">
+                      Explore structural weaknesses, expand missing assumptions, or challenge other parts of your draft.
+                    </p>
+                    <button className="socratic-btn" onClick={() => setActiveTab('coaching')}>
+                      Trigger Socratic Team
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', overflowY: 'auto', flex: 1 }}>
+                  <div className="details-header">
+                    <span className="details-location" style={{ color: 'var(--color-danger)' }}>
+                      CONTRADICTION &bull; SEVERITY: {selectedEdge.data?.severity?.toUpperCase() || 'HIGH'}
+                    </span>
+                    <h2 className="details-title">Argument Conflict</h2>
+                  </div>
+
+                  <div className="details-section">
+                    <span className="details-section-title">Socratic Explanation</span>
+                    <div className="details-text-box" style={{ borderColor: 'rgba(239, 68, 68, 0.25)', borderLeft: '4px solid var(--color-danger)' }}>
+                      {selectedEdge.data?.explanation || 'A direct logical conflict was verified between these claims.'}
+                    </div>
+                  </div>
+
+                  <div className="details-section">
+                    <span className="details-section-title">Verification Confidence</span>
+                    <div className="details-text-box">
+                      Gemini Verification Confidence: <strong>{((selectedEdge.data?.confidence || 0) * 100).toFixed(0)}%</strong>
+                    </div>
+                  </div>
+
+                  <div className="socratic-coaching-box">
+                    <span className="socratic-title">🔥 Resolve Logical Conflict</span>
+                    <p className="socratic-text">
+                      These claims present logically incompatible conclusions. Let's inspect the underlying premises to help you rewrite this.
+                    </p>
+                    <button className="socratic-btn" onClick={() => setActiveTab('coaching')}>
+                      Start Socratic Coaching
+                    </button>
+                  </div>
+                </div>
+              )
+            ) : (
+              /* Coaching Chat Pane */
+              <div className="chat-panel">
+                <div className="chat-messages">
+                  {coachingChat.map((msg, idx) => (
+                    <div
+                      key={idx}
+                      className={`chat-message ${msg.sender} ${msg.status}`}
+                    >
+                      {/* Simple custom markdown parsing */}
+                      {msg.text.split('\n').map((line, lIdx) => {
+                        if (line.startsWith('### ')) {
+                          return (
+                            <h3 key={lIdx} style={{ margin: '12px 0 6px 0', fontSize: '14px', fontWeight: '700', color: msg.status === 'intercepted' ? '#f87171' : '#fca5a5' }}>
+                              {line.replace('### ', '')}
+                            </h3>
+                          );
+                        }
+                        if (line.startsWith('**') && line.endsWith('**')) {
+                          return (
+                            <strong key={lIdx} style={{ display: 'block', margin: '8px 0 4px 0', fontSize: '13px', color: '#f3f4f6' }}>
+                              {line.replace(/\*\*/g, '')}
+                            </strong>
+                          );
+                        }
+                        if (line.startsWith('- ') || line.startsWith('* ')) {
+                          return (
+                            <li key={lIdx} style={{ marginLeft: '12px', fontSize: '12px', listStyleType: 'disc', color: '#e5e7eb', marginBottom: '4px' }}>
+                              {line.substring(2)}
+                            </li>
+                          );
+                        }
+                        return (
+                          <p key={lIdx} style={{ margin: '6px 0', fontSize: '13px', color: '#d1d5db', lineHeight: '1.5' }}>
+                            {line}
+                          </p>
+                        );
+                      })}
+
+                      {/* Render Interactive Matrix options if intercepted */}
+                      {msg.status === 'intercepted' && (
+                        <div style={{ marginTop: '16px' }}>
+                          <span className="matrix-options-title">💡 Socratic Redirect Matrix</span>
+                          <button
+                            className="matrix-pill"
+                            onClick={() => sendCoachingMessage("Give me a structural outline for this section.")}
+                          >
+                            📝 Structural Outline Guide
+                          </button>
+                          <button
+                            className="matrix-pill"
+                            onClick={() => sendCoachingMessage("What core assumptions or premises behind this claim should I verify?")}
+                          >
+                            ⚖️ Verify Logical Premises
+                          </button>
+                          <button
+                            className="matrix-pill"
+                            onClick={() => sendCoachingMessage("What empirical data or citations do I need to support this logic?")}
+                          >
+                            🔎 Identify Evidentiary Needs
+                          </button>
+                          <button
+                            className="matrix-pill"
+                            onClick={() => sendCoachingMessage("What potential counterarguments or conflicts could arise from this reasoning?")}
+                          >
+                            🔥 Discover Logical Conflicts
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  {isCoachingLoading && (
+                    <div className="chat-message argus loading-bubble">
+                      🔮 Socratic Specialists analyzing logic, citations & assumptions...
+                    </div>
+                  )}
+
+                  <div ref={chatEndRef} />
+                </div>
+
+                {/* Input Area */}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (chatInput.trim() && !isCoachingLoading) {
+                      sendCoachingMessage(chatInput);
+                      setChatInput('');
+                    }
+                  }}
+                  className="chat-input-container"
+                >
+                  <input
+                    type="text"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    placeholder={
+                      selectedNode
+                        ? "Ask about this claim's assumptions or empirical gaps..."
+                        : "Ask how to resolve this contradiction..."
+                    }
+                    className="chat-input"
+                    disabled={isCoachingLoading}
+                  />
+                  <button
+                    type="submit"
+                    className="socratic-btn"
+                    style={{ borderRadius: '4px', padding: '0 16px' }}
+                    disabled={isCoachingLoading}
+                  >
+                    Send
+                  </button>
+                </form>
               </div>
-            </div>
-
-            <div className="details-section">
-              <span className="details-section-title">Verification Confidence</span>
-              <div className="details-text-box">
-                Gemini Verification Confidence: <strong>{((selectedEdge.data?.confidence || 0) * 100).toFixed(0)}%</strong>
-              </div>
-            </div>
-
-            <div className="socratic-coaching-box">
-              <span className="socratic-title">🔥 Resolve Logical Conflict</span>
-              <p className="socratic-text">
-                These claims present logically incompatible conclusions. Let's inspect the underlying premises to help you rewrite this.
-              </p>
-              <button className="socratic-btn" onClick={() => alert("Interactive Coaching coming on Day 5!")}>
-                Start Socratic Coaching
-              </button>
-            </div>
+            )}
           </div>
         ) : (
           <div className="details-empty-state">
@@ -410,3 +569,4 @@ function App() {
 }
 
 export default App;
+

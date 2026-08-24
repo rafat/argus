@@ -7,7 +7,7 @@ from pydantic import TypeAdapter
 from app.models.claim import Claim
 from app.models.conflict import Conflict
 from app.models.document import DocumentRecord
-from app.models.conflict import Conflict
+from app.models.interception import InterceptionRecord
 
 
 class FirestoreRepository:
@@ -264,6 +264,24 @@ class FirestoreRepository:
             )
             for conflict in conflicts
         )
+
+    def save_interception(
+        self,
+        document_id: str,
+        interception: InterceptionRecord,
+    ) -> None:
+        """
+        Log an integrity interception event under:
+            documents/{document_id}/interceptions/{interception_id}
+        """
+        doc_ref = (
+            self.db
+            .collection("documents")
+            .document(document_id)
+            .collection("interceptions")
+            .document(interception.id)
+        )
+        doc_ref.set(interception.model_dump(mode="json"))
 
     # ------------------------------------------------------------------
     # Batch helper

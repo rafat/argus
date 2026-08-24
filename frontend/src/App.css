@@ -488,3 +488,144 @@ body {
   text-transform: uppercase;
 }
 
+/* Socratic Chat Panel & Tabs */
+.details-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 16px;
+}
+
+.tab-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  padding: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.tab-btn:hover {
+  color: var(--text-main);
+}
+
+.tab-btn.active {
+  color: #3b82f6;
+  border-bottom-color: #3b82f6;
+}
+
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  height: 520px;
+  overflow: hidden;
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-right: 4px;
+}
+
+.chat-message {
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  word-break: break-word;
+}
+
+.chat-message.user {
+  background-color: #1e293b;
+  border-color: rgba(59, 130, 246, 0.3);
+  align-self: flex-end;
+  width: 90%;
+}
+
+.chat-message.argus {
+  align-self: flex-start;
+  width: 100%;
+}
+
+.chat-message.argus.intercepted {
+  border-color: rgba(239, 68, 68, 0.5);
+  background-color: rgba(239, 68, 68, 0.05);
+}
+
+.chat-message.loading-bubble {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-style: italic;
+  animation: pulse 1.5s infinite ease-in-out;
+}
+
+.chat-input-container {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  border-top: 1px solid var(--border-color);
+  padding-top: 12px;
+}
+
+.chat-input {
+  flex: 1;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-main);
+  padding: 8px 12px;
+  font-size: 13px;
+  outline: none;
+}
+
+.chat-input:focus {
+  border-color: var(--color-primary-accent);
+}
+
+.matrix-options-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-top: 12px;
+  margin-bottom: 6px;
+}
+
+.matrix-pill {
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #60a5fa;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: 6px;
+  display: block;
+  text-align: left;
+  width: 100%;
+}
+
+.matrix-pill:hover {
+  background-color: #1e3a8a33;
+  border-color: #3b82f6;
+  color: #93c5fd;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+
