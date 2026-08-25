@@ -12,6 +12,12 @@
   --color-primary-accent: #3b82f6;
 }
 
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
   padding: 0;
@@ -24,10 +30,13 @@ body {
 /* 3-Pane Grid System */
 .app-container {
   display: grid;
-  grid-template-columns: 280px 1fr 340px;
+  grid-template-columns: minmax(240px, 280px) minmax(0, 1fr) minmax(280px, 340px);
   grid-template-rows: 60px 1fr;
   height: 100vh;
   width: 100vw;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* Header */
@@ -67,6 +76,8 @@ body {
 
 /* Sidebar Pane */
 .app-sidebar {
+  grid-column: 1;
+  grid-row: 2;
   background-color: var(--bg-secondary);
   border-right: 1px solid var(--border-color);
   display: flex;
@@ -74,6 +85,8 @@ body {
   padding: 20px;
   gap: 20px;
   overflow-y: auto;
+  min-width: 0;
+  min-height: 0;
 }
 
 .sidebar-section-title {
@@ -170,10 +183,14 @@ body {
 
 /* Canvas Pane (React Flow) */
 .app-canvas {
+  grid-column: 2;
+  grid-row: 2;
   background-color: var(--bg-primary);
   position: relative;
   height: 100%;
   width: 100%;
+  min-width: 0;
+  min-height: 0;
 }
 
 .canvas-loading-overlay {
@@ -237,8 +254,28 @@ body {
 }
 
 .claim-node-container.node-selected {
+  width: 360px;
+  padding: 16px;
+  font-size: 14px;
   border: 2px solid #ef4444 !important;
   box-shadow: 0 0 20px rgba(239, 68, 68, 0.25) !important;
+}
+
+.claim-node-container.node-selected .node-location {
+  font-size: 11px;
+}
+
+.claim-node-container.node-selected .node-badge {
+  font-size: 9px;
+}
+
+.claim-node-container.node-selected .node-body {
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.claim-node-container.node-selected .node-footer {
+  font-size: 10px;
 }
 
 .node-header {
@@ -305,13 +342,18 @@ body {
 
 /* Details Pane */
 .app-details {
+  grid-column: 3;
+  grid-row: 2;
   background-color: var(--bg-secondary);
   border-left: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   padding: 20px;
   gap: 20px;
+  overflow-x: hidden;
   overflow-y: auto;
+  min-width: 0;
+  min-height: 0;
 }
 
 .details-empty-state {
@@ -491,12 +533,19 @@ body {
 /* Socratic Chat Panel & Tabs */
 .details-tabs {
   display: flex;
+  width: 100%;
+  min-width: 0;
+  flex: 0 0 auto;
   border-bottom: 1px solid var(--border-color);
   margin-bottom: 16px;
 }
 
 .tab-btn {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
@@ -627,5 +676,3 @@ body {
   0%, 100% { opacity: 0.6; }
   50% { opacity: 1; }
 }
-
-

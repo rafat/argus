@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import asyncio
+import os
 from uuid import uuid4
 
+from google import genai
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
+from pydantic import TypeAdapter
 
 from app.agents.conflict import (
     ConflictResolution,
@@ -13,6 +17,33 @@ from app.agents.conflict import (
 from app.models.claim import Claim
 from app.models.conflict import Conflict
 from app.tools.conflict_candidates import ClaimPair
+
+
+def evaluate_claim_pair_sync(pair: ClaimPair) -> ConflictResolution:
+    """Evaluate a conflict with the synchronous Vertex client."""
+    client = genai.Client(
+        vertexai=True,
+        project=os.environ["GOOGLE_CLOUD_PROJECT"],
+        location=os.environ.get("VERTEX_AI_LOCATION", "asia-south1"),
+    )
+    prompt = (
+        "Compare the following two claims extracted from the same document.\n\n"
+        f"Claim A: {pair.claim_a.text}\n"
+        f"Claim B: {pair.claim_b.text}\n\n"
+        "Determine whether they genuinely contradict or conflict semantically. "
+        "Similarity alone is not contradiction. Explain the reasoning."
+    )
+    response = client.models.generate_content(
+        model=os.environ.get("ARGUS_GEMINI_MODEL", "gemini-3.5-flash"),
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=TypeAdapter(ConflictResolution).json_schema(),
+        ),
+    )
+    if not response.text:
+        raise RuntimeError("Gemini returned an empty conflict analysis response")
+    return ConflictResolution.model_validate_json(response.text)
 
 
 async def evaluate_claim_pair(
@@ -85,7 +116,16 @@ async def analyze_claim_pairs(
     conflicts: list[Conflict] = []
 
     for pair in pairs:
-        resolution = await evaluate_claim_pair(pair)
+        use_async_gemini = os.environ.get(
+            "ARGUS_USE_ASYNC_GEMINI", "false"
+        ).lower() in {"1", "true", "yes"}
+        if use_async_gemini:
+            resolution = await evaluate_claim_pair(pair)
+        else:
+            resolution = await asyncio.to_thread(
+                evaluate_claim_pair_sync,
+                pair,
+            )
 
         if not resolution.is_conflict:
             continue

@@ -8,8 +8,11 @@ const ClaimNode = ({ data, selected }) => {
 
   // Scale node size based on centrality
   const scaleStyle = {
-    transform: `scale(${1 + (data.centrality || 0) * 0.25})`,
-    transition: 'transform 0.2s ease',
+    transform: `scale(${(1 + (data.centrality || 0) * 0.25) * (selected ? 1.45 : 1)})`,
+    transformOrigin: 'center center',
+    transition: 'transform 0.2s ease, width 0.2s ease',
+    position: 'relative',
+    zIndex: selected ? 1000 : 1,
   };
 
   return (

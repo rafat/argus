@@ -27,8 +27,11 @@ function App() {
     graphData,
     selectedNode,
     selectedEdge,
+    selectedIssue,
     isProcessing,
     uploadStatus,
+    uploadProgress,
+    uploadProgressMessage,
     error,
     fetchDocuments,
     selectDocument,
@@ -40,13 +43,19 @@ function App() {
     isCoachingLoading,
     sendCoachingMessage,
     clearCoachingChat,
+    versions,
+    diffs,
+    issues,
+    uploadRevision,
   } = useArgusStore();
 
   const fileInputRef = useRef(null);
+  const revisionInputRef = useRef(null);
   
   // Graph Filters state
   const [statusFilter, setStatusFilter] = useState('all');
   const [severityFilter, setSeverityFilter] = useState('all');
+  const [revisionTab, setRevisionTab] = useState('history');
 
   // Socratic Coaching active states & scroll references
   const [activeTab, setActiveTab] = useState('details');
@@ -82,6 +91,19 @@ function App() {
     const file = e.target.files?.[0];
     if (file) {
       uploadDocument(file);
+    }
+  };
+
+  const handleRevisionClick = () => {
+    if (revisionInputRef.current) {
+      revisionInputRef.current.click();
+    }
+  };
+
+  const handleRevisionChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      uploadRevision(file);
     }
   };
 
@@ -132,6 +154,7 @@ function App() {
       }
       return {
         ...node,
+        selected: selectedNode?.id === node.id,
         style: {
           ...node.style,
           opacity: isDimmed ? 0.25 : 1.0,
@@ -279,7 +302,38 @@ function App() {
         {isProcessing && (
           <div className="canvas-loading-overlay">
             <div className="spinner"></div>
-            <div className="loading-status">{uploadStatus || 'Processing argument network...'}</div>
+            <div className="loading-status" style={{ marginBottom: '8px' }}>
+              {uploadProgressMessage || uploadStatus || 'Processing argument network...'}
+            </div>
+            
+            {/* Progress Bar Container */}
+            <div 
+              style={{
+                width: '100%',
+                maxWidth: '360px',
+                background: '#27272a',
+                borderRadius: '9999px',
+                height: '8px',
+                overflow: 'hidden',
+                margin: '12px 0 6px 0',
+                border: '1px solid rgba(255,255,255,0.05)'
+              }}
+            >
+              <div 
+                style={{
+                  width: `${Math.max(2, uploadProgress)}%`,
+                  background: 'linear-gradient(90deg, #6366f1 0%, #a855f7 100%)',
+                  height: '100%',
+                  borderRadius: '9999px',
+                  transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)'
+                }}
+              ></div>
+            </div>
+            
+            <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#a1a1aa', marginBottom: '8px' }}>
+              {Math.round(uploadProgress)}% Complete
+            </div>
+
             <div className="loading-subtext">Executing ADK 2 agent graphs & verifying contradictions</div>
           </div>
         )}
@@ -331,7 +385,29 @@ function App() {
 
       {/* 4. Details & Coaching Pane */}
       <section className="app-details">
-        {selectedNode || selectedEdge ? (
+        {selectedDocumentId && (
+          <div className="details-tabs revision-tabs">
+            <button
+              className={`tab-btn ${revisionTab === 'history' ? 'active' : ''}`}
+              onClick={() => { clearSelection(); setRevisionTab('history'); }}
+            >
+              📑 Drafts ({versions.length})
+            </button>
+            <button
+              className={`tab-btn ${revisionTab === 'issues' ? 'active' : ''}`}
+              onClick={() => { clearSelection(); setRevisionTab('issues'); }}
+            >
+              📋 Issues ({issues.length})
+            </button>
+            <button
+              className={`tab-btn ${revisionTab === 'diffs' ? 'active' : ''}`}
+              onClick={() => { clearSelection(); setRevisionTab('diffs'); }}
+            >
+              ⚡ Diff ({diffs.length})
+            </button>
+          </div>
+        )}
+        {selectedNode || selectedEdge || selectedIssue ? (
           <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
             {/* Tab Navigation */}
             <div className="details-tabs">
@@ -405,7 +481,7 @@ function App() {
                     </button>
                   </div>
                 </div>
-              ) : (
+              ) : selectedEdge ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', overflowY: 'auto', flex: 1 }}>
                   <div className="details-header">
                     <span className="details-location" style={{ color: 'var(--color-danger)' }}>
@@ -437,6 +513,24 @@ function App() {
                       Start Socratic Coaching
                     </button>
                   </div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', overflowY: 'auto', flex: 1 }}>
+                  <div className="details-header">
+                    <span className="details-location">TRACKED ISSUE</span>
+                    <h2 className="details-title">{selectedIssue.issue_type.toUpperCase()} Issue</h2>
+                  </div>
+                  <div className="details-section">
+                    <span className="details-section-title">Status</span>
+                    <div className="details-text-box">{selectedIssue.status.toUpperCase()}</div>
+                  </div>
+                  <div className="details-section">
+                    <span className="details-section-title">Coaching question</span>
+                    <div className="details-text-box">{selectedIssue.question_text}</div>
+                  </div>
+                  <button className="socratic-btn" onClick={() => setActiveTab('coaching')}>
+                    Coach me on this issue
+                  </button>
                 </div>
               )
             ) : (
@@ -555,6 +649,169 @@ function App() {
               </div>
             )}
           </div>
+        ) : selectedDocumentId ? (
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+            {/* Sub-tab content */}
+            {revisionTab === 'history' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', overflowY: 'auto', flex: 1, padding: '16px' }}>
+                <div className="details-header">
+                  <span className="details-location">Draft Session Sequence</span>
+                  <h2 className="details-title">Revision History</h2>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {versions.length === 0 ? (
+                    <div className="details-text-box" style={{ color: 'var(--text-muted)', borderStyle: 'dashed', textAlign: 'center' }}>
+                      Gathering draft records...
+                    </div>
+                  ) : (
+                    versions.map((ver) => (
+                      <div key={ver.version_id} className="details-text-box" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                          <strong>Draft V{ver.version_number}</strong>
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                            {new Date(ver.created_at).toLocaleTimeString()}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>ID: {ver.version_id.substring(0, 8)}...</div>
+                        {ver.parent_version_id && (
+                          <div style={{ fontSize: '12px', color: '#fbcfe8', marginTop: '4px' }}>
+                            ← Parent draft ID: {ver.parent_version_id.substring(0, 8)}...
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <div className="socratic-coaching-box" style={{ marginTop: 'auto' }}>
+                  <span className="socratic-title">📝 Upload Next Revision Draft</span>
+                  <p className="socratic-text">
+                    Argus compares your new draft copy with the current version, matches paragraph changes, aligns claim coordinates, and re-analyzes outstanding issues to detect resolution or escalation!
+                  </p>
+                  <button className="socratic-btn" onClick={handleRevisionClick}>
+                    Upload Draft V{versions.length + 1}
+                  </button>
+                  <input
+                    type="file"
+                    ref={revisionInputRef}
+                    onChange={handleRevisionChange}
+                    accept=".pdf,.docx"
+                    style={{ display: 'none' }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {revisionTab === 'issues' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', overflowY: 'auto', flex: 1, padding: '16px' }}>
+                <div className="details-header">
+                  <span className="details-location">Tracked Socratic Issues</span>
+                  <h2 className="details-title">Resolution History</h2>
+                </div>
+                {issues.length === 0 ? (
+                  <div className="details-text-box" style={{ color: 'var(--text-muted)', borderStyle: 'dashed', textAlign: 'center' }}>
+                    No Socratic issues flagged for this document yet. Start coaching on specific claims to register issues.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {issues.map((issue) => {
+                      const statusColors = {
+                        open: '#60a5fa',
+                        addressed: '#34d399',
+                        persistent: '#f59e0b',
+                        escalated: '#ef4444',
+                      };
+                      return (
+                        <div key={issue.id} className="details-text-box" style={{ borderLeft: `4px solid ${statusColors[issue.status] || '#9ca3af'}` }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                            <span style={{ fontSize: '11px', textTransform: 'uppercase', fontWeight: 'bold', color: statusColors[issue.status] }}>
+                              {issue.status.toUpperCase()}
+                            </span>
+                            {issue.escalation_count > 0 && (
+                              <span style={{ fontSize: '11px', color: '#ef4444', fontWeight: 'bold' }}>
+                                ⚠️ Escalated x{issue.escalation_count}
+                              </span>
+                            )}
+                          </div>
+                          <strong>{issue.issue_type.toUpperCase()}: {issue.section}</strong>
+                          <p style={{ fontSize: '12px', margin: '4px 0', color: '#d1d5db' }}>{issue.description}</p>
+                          <div style={{ background: 'rgba(255,255,255,0.04)', padding: '6px', borderRadius: '4px', fontSize: '11px', marginTop: '6px', color: '#fca5a5' }}>
+                            ❓ {issue.question_text}
+                          </div>
+                          <button
+                            className="socratic-btn"
+                            style={{ marginTop: '10px', width: '100%' }}
+                            onClick={() => {
+                              useArgusStore.getState().setSelectedIssue(issue);
+                              setActiveTab('coaching');
+                            }}
+                          >
+                            Coach me on this issue
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {revisionTab === 'diffs' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', overflowY: 'auto', flex: 1, padding: '16px' }}>
+                <div className="details-header">
+                  <span className="details-location">Textual Differences</span>
+                  <h2 className="details-title">Paragraph Diff</h2>
+                </div>
+                {diffs.length === 0 ? (
+                  <div className="details-text-box" style={{ color: 'var(--text-muted)', borderStyle: 'dashed', textAlign: 'center' }}>
+                    This is the initial draft (V1). Upload a revision (V2) to view paragraph changes.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {diffs.map((diff, idx) => {
+                      const changeBg = {
+                        added: 'rgba(16, 185, 129, 0.1)',
+                        removed: 'rgba(239, 68, 68, 0.1)',
+                        modified: 'rgba(245, 158, 11, 0.1)',
+                        unchanged: 'transparent',
+                      };
+                      const changeBorder = {
+                        added: '1px solid rgba(16, 185, 129, 0.25)',
+                        removed: '1px solid rgba(239, 68, 68, 0.25)',
+                        modified: '1px solid rgba(245, 158, 11, 0.25)',
+                        unchanged: '1px solid var(--border-color)',
+                      };
+                      return (
+                        <div key={idx} className="details-text-box" style={{ background: changeBg[diff.change_type], border: changeBorder[diff.change_type] }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '11px' }}>
+                            <span style={{ fontWeight: 'bold', textTransform: 'uppercase' }}>{diff.change_type}</span>
+                            <span>{diff.location}</span>
+                          </div>
+                          {diff.change_type === 'modified' ? (
+                            <div>
+                              <div style={{ color: '#ef4444', textDecoration: 'line-through', fontSize: '12px', marginBottom: '4px' }}>
+                                - {diff.before}
+                              </div>
+                              <div style={{ color: '#10b981', fontSize: '12px' }}>
+                                + {diff.after}
+                              </div>
+                              <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                                Similarity: {(diff.similarity * 100).toFixed(0)}%
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: '12px', color: diff.change_type === 'removed' ? '#fca5a5' : '#e5e7eb' }}>
+                              {diff.after || diff.before}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         ) : (
           <div className="details-empty-state">
             <span className="details-empty-icon">👈</span>
@@ -569,4 +826,3 @@ function App() {
 }
 
 export default App;
-

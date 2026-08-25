@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from pydantic import TypeAdapter
 
 from app.models.claim import Claim
@@ -8,6 +10,8 @@ from app.tools.conflict_candidates import (
     ClaimPair,
     ConflictCandidateGenerator,
 )
+
+logger = logging.getLogger(__name__)
 
 
 async def analyze_conflicts(
@@ -31,14 +35,18 @@ async def analyze_conflicts(
         5,
     )
 
+    logger.info("--- [ADK Workflow] Generating semantic conflict candidates ---")
     generator = ConflictCandidateGenerator()
 
     pairs: list[ClaimPair] = generator.generate(
         claims,
         top_k=top_k,
     )
+    logger.info(f"--- [ADK Workflow] Found {len(pairs)} candidate claim pairs for contradiction analysis ---")
 
+    logger.info("--- [ADK Workflow] Evaluating claim pairs using Conflict Agent (Gemini) ---")
     conflicts = await analyze_claim_pairs(pairs)
+    logger.info(f"--- [ADK Workflow] Contradiction analysis complete. Identified {len(conflicts)} active conflicts ---")
 
     candidate_pair_info = [
         {

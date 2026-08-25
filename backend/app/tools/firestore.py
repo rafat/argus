@@ -8,6 +8,7 @@ from app.models.claim import Claim
 from app.models.conflict import Conflict
 from app.models.document import DocumentRecord
 from app.models.interception import InterceptionRecord
+from app.models.issue import Issue, IssueEvent
 
 
 class FirestoreRepository:
@@ -27,17 +28,30 @@ class FirestoreRepository:
     # Firestore supports up to 500 writes per batch.
     # Keep a comfortable margin for future changes.
     _MAX_WRITES_PER_BATCH = 100
+    _shared_client = None
 
     def __init__(self, client=None):
         if client is None:
             from google.cloud import firestore
 
-            client = firestore.Client(
-                project=os.environ["GOOGLE_CLOUD_PROJECT"],
-                database=os.environ["FIRESTORE_DATABASE"],
-            )
+            # Reuse one Firestore client/channel for the process. Creating a
+            # client for every polling request leaks gRPC channels and, on
+            # macOS, eventually produces fork-poll warnings or a Python crash.
+            if self.__class__._shared_client is None:
+                self.__class__._shared_client = firestore.Client(
+                    project=os.environ["GOOGLE_CLOUD_PROJECT"],
+                    database=os.environ["FIRESTORE_DATABASE"],
+                )
+            client = self.__class__._shared_client
 
         self.db = client
+
+    @classmethod
+    def close_shared_client(cls) -> None:
+        """Close the process-wide client during application shutdown."""
+        if cls._shared_client is not None:
+            cls._shared_client.close()
+            cls._shared_client = None
 
     # ------------------------------------------------------------------
     # Documents
@@ -65,12 +79,38 @@ class FirestoreRepository:
             .set(document_data)
         )
 
+    def update_document_progress(self, document_id: str, progress: float, progress_message: str) -> None:
+        """
+        Update the progress status of a document record in Firestore.
+        """
+        doc_ref = self.db.collection("documents").document(document_id)
+        doc_ref.update({
+            "progress": progress,
+            "progress_message": progress_message,
+        })
+
     def get_document(self, document_id: str) -> DocumentRecord | None:
         """
         Retrieve a document record by ID.
         """
         doc_ref = self.db.collection("documents").document(document_id)
         snapshot = doc_ref.get()
+        if not snapshot.exists:
+            return None
+        return DocumentRecord.model_validate(snapshot.to_dict())
+
+    def get_document_version(self, document_id: str, version_id: str) -> DocumentRecord | None:
+        """
+        Retrieve a specific historical version of a document.
+        """
+        ref = (
+            self.db
+            .collection("documents")
+            .document(document_id)
+            .collection("versions")
+            .document(version_id)
+        )
+        snapshot = ref.get()
         if not snapshot.exists:
             return None
         return DocumentRecord.model_validate(snapshot.to_dict())
@@ -90,6 +130,23 @@ class FirestoreRepository:
         documents.sort(key=lambda d: d.created_at, reverse=True)
         return documents
 
+    def get_document_versions(self, document_id: str) -> list[DocumentRecord]:
+        """
+        List all recorded historical versions of a document.
+        """
+        versions_ref = (
+            self.db
+            .collection("documents")
+            .document(document_id)
+            .collection("versions")
+        )
+        versions = []
+        for doc in versions_ref.stream():
+            versions.append(DocumentRecord.model_validate(doc.to_dict()))
+        # Sort by creation date ascending
+        versions.sort(key=lambda d: d.created_at)
+        return versions
+
     def get_document_claims(self, document_id: str) -> list[Claim]:
         """
         Retrieve all claims for a given document_id.
@@ -107,6 +164,13 @@ class FirestoreRepository:
                 data["id"] = doc.id
             claims.append(Claim.model_validate(data))
         return claims
+
+    def get_version_claims(self, document_id: str, version_id: str) -> list[Claim]:
+        """
+        Retrieve all claims of a specific historical version of a document.
+        """
+        all_claims = self.get_document_claims(document_id)
+        return [c for c in all_claims if c.document_version == version_id]
 
     def get_conflicts(self, document_id: str) -> list[Conflict]:
         """
@@ -282,6 +346,81 @@ class FirestoreRepository:
             .document(interception.id)
         )
         doc_ref.set(interception.model_dump(mode="json"))
+
+    def save_issues(self, document_id: str, issues: Iterable[Issue]) -> None:
+        """
+        Save a batch of Issue records under documents/{document_id}/issues/{issue_id}
+        """
+        parent = (
+            self.db
+            .collection("documents")
+            .document(document_id)
+            .collection("issues")
+        )
+        self._commit_in_batches(
+            (
+                parent.document(issue.id),
+                issue.model_dump(mode="json")
+            )
+            for issue in issues
+        )
+
+    def get_issues(self, document_id: str) -> list[Issue]:
+        """
+        Retrieve all tracked issues for a given document.
+        """
+        issues_ref = (
+            self.db
+            .collection("documents")
+            .document(document_id)
+            .collection("issues")
+        )
+        issues = []
+        for doc in issues_ref.stream():
+            data = doc.to_dict()
+            if "id" not in data:
+                data["id"] = doc.id
+            issues.append(Issue.model_validate(data))
+        return issues
+
+    def save_issue_events(self, document_id: str, events: Iterable[IssueEvent]) -> None:
+        """
+        Save a batch of IssueEvent records under:
+            documents/{document_id}/issue_events/{event_id}
+        """
+        parent = (
+            self.db
+            .collection("documents")
+            .document(document_id)
+            .collection("issue_events")
+        )
+        self._commit_in_batches(
+            (
+                parent.document(event.id),
+                event.model_dump(mode="json")
+            )
+            for event in events
+        )
+
+    def get_issue_events(self, document_id: str) -> list[IssueEvent]:
+        """
+        Retrieve all tracked issue events for a given document.
+        """
+        events_ref = (
+            self.db
+            .collection("documents")
+            .document(document_id)
+            .collection("issue_events")
+        )
+        events = []
+        for doc in events_ref.stream():
+            data = doc.to_dict()
+            if "id" not in data:
+                data["id"] = doc.id
+            events.append(IssueEvent.model_validate(data))
+        # Sort by created_at ascending
+        events.sort(key=lambda e: e.created_at)
+        return events
 
     # ------------------------------------------------------------------
     # Batch helper

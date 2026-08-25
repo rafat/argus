@@ -23,3 +23,8 @@ class DocumentRecord(BaseModel):
     storage_uri: str | None = None
     status: Literal["uploaded", "processing", "processed", "failed"]
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    version_number: int = 1
+    parent_version_id: str | None = None
+    raw_text: str | None = None
+    progress: float = 0.0
+    progress_message: str = ""
