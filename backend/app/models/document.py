@@ -21,7 +21,7 @@ class DocumentRecord(BaseModel):
     content_type: str
     size_bytes: int
     storage_uri: str | None = None
-    status: Literal["uploaded", "processing", "processed", "failed"]
+    status: Literal["uploaded", "processing", "processed", "blocked", "failed"]
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     version_number: int = 1
     parent_version_id: str | None = None

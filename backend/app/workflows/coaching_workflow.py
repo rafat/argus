@@ -101,8 +101,11 @@ def build_coaching_workflow() -> Workflow:
         func=_prepare_synthesis_inputs,
         name="prepare_synthesis",
     )
-    prepare_node.input_schema = dict
-    prepare_node.output_schema = dict
+    # The preceding fan-out produces three different typed agent outputs.
+    # Leave this join node schema-less: it reads those outputs from ctx.state,
+    # normalizes them into state, and hands state to the coordinator. Declaring
+    # dict here makes ADK 2.5 reject the graph because each fan-out edge has a
+    # different output schema.
 
     coordinator_node = build_coaching_coordinator_agent()
 
@@ -198,6 +201,42 @@ async def run_coaching_workflow(
                     final_feedback = parsed.coaching_feedback
                 except ValidationError:
                     pass
+
+    # ADK stores output_key values in session state. Depending on the runner
+    # event path, the final coordinator event may not carry the output payload
+    # itself, so use the persisted state as the authoritative fallback.
+    session = await sessions.get_session(
+        app_name="argus",
+        user_id="user",
+        session_id=session_id,
+    )
+    if session:
+        state = session.state
+        if not final_feedback:
+            raw_feedback = state.get("synthesized_feedback")
+            try:
+                final_feedback = CoachingSynthesis.model_validate(raw_feedback).coaching_feedback
+            except (ValidationError, TypeError):
+                pass
+        if not socratic_questions:
+            try:
+                socratic_questions = SocraticQuestions.model_validate(state.get("socratic_res")).questions
+            except (ValidationError, TypeError):
+                pass
+        if not evidence_suggestions or evidence_findings == "No empirical citation issues flagged.":
+            try:
+                evidence = EvidenceAnalysis.model_validate(state.get("evidence_res"))
+                evidence_findings = evidence.findings
+                evidence_suggestions = evidence.suggestions
+            except (ValidationError, TypeError):
+                pass
+        if not logical_flaws:
+            try:
+                argument = ArgumentAnalysis.model_validate(state.get("argument_res"))
+                logical_flaws = argument.logical_flaws
+                coherence_score = argument.coherence_score
+            except (ValidationError, TypeError):
+                pass
 
     if not final_feedback:
         raise RuntimeError("ADK Socratic coaching workflow failed to synthesize a response.")

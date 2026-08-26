@@ -7,12 +7,17 @@ from app.main import app
 from app.models.document import DocumentRecord
 from app.models.claim import Claim
 from app.models.conflict import Conflict
-from app.workflows.coaching_workflow import CoachingResult, _prepare_synthesis_inputs
+from app.workflows.coaching_workflow import CoachingResult, _prepare_synthesis_inputs, build_coaching_workflow
 from app.agents.socratic import SocraticQuestions
 from app.agents.evidence import EvidenceAnalysis
 from app.agents.argument import ArgumentAnalysis
 
 client = TestClient(app)
+
+
+def test_coaching_workflow_builds_with_adk_25_schema_validation():
+    workflow = build_coaching_workflow()
+    assert workflow.name == "collaborative_coaching_workflow"
 
 
 # -------------------------------------------------------------

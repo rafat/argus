@@ -1,5 +1,8 @@
 import asyncio
+import base64
+import json
 import logging
+import os
 from typing import Any, Callable, Coroutine
 
 logger = logging.getLogger(__name__)
@@ -35,12 +38,52 @@ class PubSubBroker:
             logger.error(f"Error executing callback on topic '{topic}': {e}", exc_info=True)
 
 
+def publish_document_uploaded_cloud(
+    *,
+    document_id: str,
+    version_id: str,
+    filename: str,
+    content_type: str,
+    storage_uri: str,
+    version_number: int,
+    parent_version_id: str | None,
+) -> str:
+    """Publish a durable GCS-backed event for a Cloud Pub/Sub push subscription."""
+    from google.cloud import pubsub_v1
+
+    topic = os.environ["PUBSUB_DOCUMENT_UPLOADED_TOPIC"]
+    publisher = pubsub_v1.PublisherClient()
+    payload = {
+        "document_id": document_id,
+        "version_id": version_id,
+        "filename": filename,
+        "content_type": content_type,
+        "storage_uri": storage_uri,
+        "version_number": version_number,
+        "parent_version_id": parent_version_id,
+    }
+    return publisher.publish(topic, json.dumps(payload).encode("utf-8")).result(timeout=30)
+
+
+def decode_pubsub_push_body(body: dict[str, Any]) -> dict[str, Any]:
+    """Decode and validate a standard Pub/Sub push envelope."""
+    encoded = body.get("message", {}).get("data")
+    if not encoded:
+        raise ValueError("Pub/Sub push message has no data")
+    event = json.loads(base64.b64decode(encoded).decode("utf-8"))
+    required = {"document_id", "version_id", "filename", "storage_uri"}
+    missing = required - event.keys()
+    if missing:
+        raise ValueError(f"Pub/Sub event missing fields: {sorted(missing)}")
+    return event
+
+
 async def on_document_uploaded(
     document_id: str,
     version_id: str,
     filename: str,
     content_type: str,
-    data: bytes,
+    data: bytes | None,
     storage_uri: str | None,
     version_number: int,
     parent_version_id: str | None,
@@ -54,6 +97,13 @@ async def on_document_uploaded(
     from app.models.document import DocumentRecord
 
     repo = FirestoreRepository()
+
+    if data is None:
+        if not storage_uri or not storage_uri.startswith("gs://"):
+            raise ValueError("A production event must contain a gs:// storage URI")
+        from google.cloud import storage as gcs
+        bucket_name, object_name = storage_uri.removeprefix("gs://").split("/", 1)
+        data = gcs.Client().bucket(bucket_name).blob(object_name).download_as_bytes()
 
     # Save DocumentRecord in processing status
     record = DocumentRecord(
@@ -81,6 +131,22 @@ async def on_document_uploaded(
         logger.error(f"Failed to parse document raw text: {e}")
         record.status = "failed"
         record.progress_message = f"Parsing failed: {e}"
+        repo.save_document(record)
+        return
+
+    # Extracted document text is untrusted data. It must pass a document
+    # guardrail before it can reach any extraction agent instructions.
+    from app.guardrails.local import LocalContentGuardrail
+    document_guardrail = await LocalContentGuardrail().inspect_document(raw_text)
+    if not document_guardrail.allowed:
+        logger.warning(
+            "Document blocked by content guardrail: document_id=%s category=%s",
+            document_id,
+            document_guardrail.category,
+        )
+        record.status = "blocked"
+        record.progress = 100.0
+        record.progress_message = "Processing stopped by document content safety policy."
         repo.save_document(record)
         return
 
@@ -122,6 +188,9 @@ async def on_document_uploaded(
         record.status = "failed"
         record.progress_message = f"Processing failed: {e}"
         repo.save_document(record)
+        # Let a real Pub/Sub push request return non-2xx so the message is
+        # retried. The local broker still catches and logs this exception.
+        raise
 
 
 async def on_revision_created(

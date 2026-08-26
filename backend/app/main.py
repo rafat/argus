@@ -10,7 +10,7 @@ import logging
 from uuid import uuid4
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.tools.document_parser import UnsupportedDocumentType
@@ -20,6 +20,8 @@ from app.workflows.document_workflow import run_document_workflow
 from app.models.graph import ArgumentGraph
 from app.tools.argument_graph import ArgumentGraphBuilder
 from app.nodes.integrity import IntegrityInterceptor
+from app.guardrails.local import LocalContentGuardrail
+from app.guardrails.model_armor import ModelArmorContentGuardrail
 from app.workflows.coaching_workflow import run_coaching_workflow
 from app.models.issue import Issue, IssueEvent
 from pydantic import BaseModel, model_validator
@@ -49,44 +51,15 @@ class CoachingRequest(BaseModel):
 
 load_dotenv()
 
-# TEMPORARY startup diagnostics.  Keep this limited to known configuration
-# keys and never print credential contents or access tokens.
-_env_logger = logging.getLogger("argus.config")
-_safe_env_keys = (
-    "GOOGLE_CLOUD_PROJECT",
-    "VERTEX_AI_LOCATION",
-    "GOOGLE_GENAI_USE_VERTEXAI",
-    "FIRESTORE_DATABASE",
-    "GCS_BUCKET",
-    "AGENT_RETRIEVAL_LOCATION",
-    "AGENT_RETRIEVAL_COLLECTION_ID",
-    "AGENT_RETRIEVAL_VECTOR_FIELD",
-    "ENVIRONMENT",
-    "LOG_LEVEL",
-    "ARGUS_USE_ASYNC_GEMINI",
-    "ARGUS_AGENT_TIMEOUT_SECONDS",
-)
-_secret_env_keys = {
-    "GOOGLE_APPLICATION_CREDENTIALS",
-    "GOOGLE_API_KEY",
-    "GEMINI_API_KEY",
-}
-_env_logger.warning("Temporary environment diagnostics:")
-for _key in _safe_env_keys:
-    _value = os.getenv(_key)
-    _env_logger.warning(
-        "  %s=%s",
-        _key,
-        "<loaded>" if _value else "<missing>",
-    )
-for _key in _secret_env_keys:
-    _env_logger.warning(
-        "  %s=%s",
-        _key,
-        "<configured; value hidden>" if os.getenv(_key) else "<missing>",
-    )
-
 app = FastAPI(title="Argus API")
+
+def _build_content_guardrail():
+    if os.getenv("MODEL_ARMOR_ENABLED", "false").lower() == "true":
+        return ModelArmorContentGuardrail()
+    return LocalContentGuardrail()
+
+
+content_guardrail = _build_content_guardrail()
 
 
 @app.on_event("shutdown")
@@ -96,7 +69,12 @@ def close_firestore_client():
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",
+        origin.strip()
+        for origin in os.getenv(
+            "CORS_ALLOWED_ORIGINS",
+            "http://localhost:5173",
+        ).split(",")
+        if origin.strip()
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -112,7 +90,13 @@ def health():
     }
 
 
-from app.tools.pubsub import initialize_pubsub, PubSubBroker
+from app.tools.pubsub import (
+    initialize_pubsub,
+    PubSubBroker,
+    decode_pubsub_push_body,
+    on_document_uploaded,
+    publish_document_uploaded_cloud,
+)
 from fastapi import status
 
 # Initialize pubsub
@@ -159,18 +143,29 @@ async def upload_document(
         storage_uri = storage.upload(data, object_name, file.content_type or "application/octet-stream")
         
         # Publish the uploaded document event to trigger async background workflow
-        broker = PubSubBroker()
-        broker.publish(
-            "document.uploaded",
-            document_id=doc_id,
-            version_id=version_id,
-            filename=filename,
-            content_type=file.content_type or "application/octet-stream",
-            data=data,
-            storage_uri=storage_uri,
-            version_number=version_num,
-            parent_version_id=parent_version_id,
-        )
+        if os.getenv("PUBSUB_DOCUMENT_UPLOADED_TOPIC"):
+            publish_document_uploaded_cloud(
+                document_id=doc_id,
+                version_id=version_id,
+                filename=filename,
+                content_type=file.content_type or "application/octet-stream",
+                storage_uri=storage_uri,
+                version_number=version_num,
+                parent_version_id=parent_version_id,
+            )
+        else:
+            broker = PubSubBroker()
+            broker.publish(
+                "document.uploaded",
+                document_id=doc_id,
+                version_id=version_id,
+                filename=filename,
+                content_type=file.content_type or "application/octet-stream",
+                data=data,
+                storage_uri=storage_uri,
+                version_number=version_num,
+                parent_version_id=parent_version_id,
+            )
     except Exception as exc:
         if os.environ.get("ENVIRONMENT", "development") == "development":
             raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -183,6 +178,40 @@ async def upload_document(
         "parent_version_id": parent_version_id,
         "status": "processing",
     }
+
+
+@app.post("/internal/pubsub/document-uploaded")
+async def receive_document_uploaded_event(
+    body: dict,
+    request: Request,
+):
+    """Receive a Pub/Sub push event and process the GCS-backed document."""
+    if os.getenv("ENVIRONMENT", "development") == "production":
+        authorization = request.headers.get("authorization", "")
+        if not authorization.startswith("Bearer "):
+            raise HTTPException(status_code=403, detail="Forbidden")
+        try:
+            from google.auth.transport import requests as google_requests
+            from google.oauth2 import id_token
+
+            claims = id_token.verify_oauth2_token(
+                authorization.removeprefix("Bearer "),
+                google_requests.Request(),
+                audience=os.environ["PUBSUB_PUSH_AUDIENCE"],
+            )
+            if claims.get("email") != os.environ["PUBSUB_PUSH_SERVICE_ACCOUNT"]:
+                raise ValueError("Unexpected Pub/Sub identity")
+        except Exception as exc:
+            raise HTTPException(status_code=403, detail="Forbidden") from exc
+    try:
+        event = decode_pubsub_push_body(body)
+        await on_document_uploaded(data=None, **event)
+        return {"status": "processed"}
+    except Exception as exc:
+        logging.getLogger(__name__).error(
+            "Pub/Sub document event failed: %s", exc, exc_info=True
+        )
+        raise HTTPException(status_code=500, detail="Document event processing failed") from exc
 
 
 @app.get("/documents")
@@ -198,6 +227,7 @@ async def list_documents():
             ]
         }
     except Exception as exc:
+        logging.getLogger(__name__).exception("Socratic coaching workflow failed")
         if os.environ.get("ENVIRONMENT", "development") == "development":
             raise HTTPException(status_code=500, detail=str(exc)) from exc
         raise HTTPException(status_code=500, detail="Failed to retrieve documents") from exc
@@ -240,7 +270,25 @@ async def post_document_coaching(document_id: str, req: CoachingRequest):
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # Step 1: Enforce Integrity Interceptor
+    # Step 1: Screen untrusted user input before any agent sees it.
+    input_guardrail = await content_guardrail.inspect_input(req.user_prompt)
+    if not input_guardrail.allowed:
+        return {
+            "status": "intercepted",
+            "interception": {
+                "id": None,
+                "classification_reason": input_guardrail.reason,
+                "category": input_guardrail.category,
+            },
+            "coaching_response": (
+                "### 🛡️ Content Safety Refusal\n\n"
+                "I could not process that request because it attempted to override "
+                "Argus instructions or access protected system information. "
+                "Please ask for analysis, questions, or feedback instead."
+            ),
+        }
+
+    # Step 2: Preserve the Argus-specific integrity policy.
     interceptor = IntegrityInterceptor(repo)
     interception = await interceptor.analyze(req.user_prompt, document_id)
 
@@ -265,7 +313,7 @@ async def post_document_coaching(document_id: str, req: CoachingRequest):
             ),
         }
 
-    # Step 2: Assemble argument context
+    # Step 3: Assemble argument context
     context_text = ""
     coaching_claim_id = req.selected_claim_id
     if req.selected_issue_id:
@@ -316,7 +364,7 @@ async def post_document_coaching(document_id: str, req: CoachingRequest):
     else:
         context_text = "General Document Review (no specific claim or conflict selected)."
 
-    # Step 3: Compute and inject adaptive coaching style weighting guidelines
+    # Step 4: Compute and inject adaptive coaching style weighting guidelines
     try:
         from app.tools.adaptive_coaching import calculate_coaching_weights, inject_adaptive_instructions
         weights = calculate_coaching_weights(repo, document_id)
@@ -326,9 +374,35 @@ async def post_document_coaching(document_id: str, req: CoachingRequest):
         logger = logging.getLogger(__name__)
         logger.warning(f"Failed to calculate/inject adaptive weights: {e}")
 
-    # Step 4: Run the ADK Socratic Coaching Workflow
+    # Step 5: Run the ADK Socratic Coaching Workflow
     try:
         coaching_feedback = await run_coaching_workflow(req.user_prompt, context_text)
+
+        # Screen generated content before persistence or returning it to the UI.
+        generated_output = "\n".join(
+            [
+                coaching_feedback.coaching_feedback,
+                coaching_feedback.evidence_findings or "",
+                *coaching_feedback.socratic_questions,
+                *coaching_feedback.evidence_suggestions,
+                *coaching_feedback.logical_flaws,
+            ]
+        )
+        output_guardrail = await content_guardrail.inspect_output(generated_output)
+        if not output_guardrail.allowed:
+            return {
+                "status": "blocked",
+                "interception": {
+                    "id": None,
+                    "classification_reason": output_guardrail.reason,
+                    "category": output_guardrail.category,
+                },
+                "coaching_response": (
+                    "I generated a response that did not meet Argus safety or "
+                    "integrity requirements, so it was not returned. Please ask "
+                    "for questions, evidence gaps, or logical analysis instead."
+                ),
+            }
         
         # Persist Socratic Issues and Events
         new_issues = []
@@ -435,6 +509,7 @@ async def post_document_coaching(document_id: str, req: CoachingRequest):
     except Exception as exc:
         if os.environ.get("ENVIRONMENT", "development") == "development":
             raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logging.getLogger(__name__).exception("Socratic coaching workflow failed")
         raise HTTPException(status_code=500, detail="Failed to run Socratic coaching team") from exc
 
 
