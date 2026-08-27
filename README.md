@@ -80,7 +80,7 @@ Guardrails operate at three boundaries:
 3. Generated output, to prevent unsafe responses or ghostwritten submission
    content from reaching the user.
 
-Production deployments can use Google Model Armor for managed content
+The production deployment uses Google Model Armor for managed content
 inspection. Argus also retains an application-level integrity interceptor for
 Argus-specific coaching and anti-ghostwriting policy decisions.
 
@@ -90,10 +90,10 @@ Argus-specific coaching and anti-ghostwriting policy decisions.
 User browser
     │ HTTPS
     ▼
-React/Vite frontend
+Cloud Run — React/Vite frontend
     │ HTTPS
     ▼
-FastAPI API on Cloud Run
+Cloud Run — FastAPI API
     │
     ├── Cloud Storage       Uploaded PDF/DOCX files
     ├── Firestore            Documents, claims, issues, and revisions
@@ -184,4 +184,3 @@ are accessed by the backend.
 
 - [Setup and deployment guide](setup.md)
 - [Current deployment and operations notes](deployment.txt)
-

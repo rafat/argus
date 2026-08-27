@@ -4,6 +4,20 @@ import axios from 'axios';
 const API_BASE_URL =
   import.meta.env.VITE_ARGUS_API_URL || 'http://localhost:8080';
 
+// Keep the backend as the complete source of document history, while the main
+// sidebar presents only the most recently uploaded document family.
+const latestDocumentOnly = (documents = []) => {
+  if (documents.length <= 1) return documents;
+
+  const latest = documents.reduce((current, candidate) => {
+    const currentTime = Date.parse(current.created_at || '') || 0;
+    const candidateTime = Date.parse(candidate.created_at || '') || 0;
+    return candidateTime >= currentTime ? candidate : current;
+  });
+
+  return [latest];
+};
+
 export const useArgusStore = create((set, get) => ({
   documents: [],
   selectedDocumentId: null,
@@ -27,7 +41,7 @@ export const useArgusStore = create((set, get) => ({
   fetchDocuments: async () => {
     try {
       const response = await axios.get(`${API_BASE_URL}/documents`);
-      set({ documents: response.data.documents });
+      set({ documents: latestDocumentOnly(response.data.documents) });
     } catch (err) {
       console.error("Failed to load documents", err);
     }
@@ -70,7 +84,7 @@ export const useArgusStore = create((set, get) => ({
         const currentDoc = listRes.data.documents.find(d => d.id === docId);
         
         if (currentDoc) {
-          set({ documents: listRes.data.documents });
+          set({ documents: latestDocumentOnly(listRes.data.documents) });
           
           if (currentDoc.status === 'failed') {
             const interval = get().pollingInterval;
@@ -165,7 +179,7 @@ export const useArgusStore = create((set, get) => ({
       };
 
       set((state) => ({
-        documents: [tempDoc, ...state.documents.filter(d => d.id !== response.data.id)],
+        documents: [tempDoc],
         uploadStatus: 'Parsing text and extracting claims asynchronously...',
         uploadProgress: 5,
         uploadProgressMessage: 'Parsing text and document structure...',

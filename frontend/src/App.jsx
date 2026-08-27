@@ -196,7 +196,6 @@ function App() {
       {/* 1. Header */}
       <header className="app-header">
         <div className="logo-container">
-          <span className="logo-icon">👁️</span>
           <span className="logo-text">ARGUS</span>
         </div>
         <div className="header-status">

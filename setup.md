@@ -31,13 +31,14 @@ The intended deployment is:
 
 ``` text
                          ┌─────────────────────┐
-                         │   React / Vite UI    │
-                         │     React Flow       │
+                         │ Cloud Run frontend  │
+                         │   React / Vite UI   │
+                         │     React Flow      │
                          └──────────┬──────────┘
                                     │ HTTPS
                                     ▼
                          ┌─────────────────────┐
-                         │      Cloud Run       │
+                         │ Cloud Run API        │
                          │    Argus FastAPI     │
                          └──────┬──────┬───────┘
                                 │      │
@@ -69,6 +70,11 @@ The intended deployment is:
        │ asynchronous jobs │
        └──────────────────┘
 ```
+
+The production deployment has two Cloud Run services: `argus-frontend` serves
+the compiled React application, and `argus-api` serves FastAPI. The frontend
+calls the API over HTTPS; neither service is replaced by direct browser access
+to the underlying Google Cloud resources.
 
 Uploaded document text is treated as untrusted content. Model Armor and the
 Argus integrity policies inspect user input, document content, and generated
@@ -445,8 +451,19 @@ Grant the Pub/Sub service agent permission to mint OIDC tokens for the push
 identity, then verify the subscription:
 
 ``` bash
+PROJECT_NUMBER="$(gcloud projects describe YOUR_PROJECT_ID \
+  --format='value(projectNumber)')"
+
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+  --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountTokenCreator"
+
 gcloud pubsub subscriptions describe document-uploaded-push
 ```
+
+The push service account must also be allowed to invoke the API. For a public
+Cloud Run API this is satisfied by `--allow-unauthenticated`; if the API is
+private, grant the runtime/push identity `roles/run.invoker` instead.
 
 For local development, when `PUBSUB_DOCUMENT_UPLOADED_TOPIC` is unset, Argus
 uses its in-process broker. Do not use the in-process broker as the production
@@ -937,7 +954,8 @@ the API URL. If the API URL changes, rebuild and redeploy the frontend.
 
 Argus currently uses the Agent Retrieval / Vector Search collection when it is
 configured. Provision it before enabling production document processing because
-indexing and deployment can take significant time.
+indexing and deployment can take significant time. The current production
+collection is `argusclaims` in `us-central1`.
 
 The eventual architecture is:
 
@@ -968,6 +986,38 @@ AGENT_RETRIEVAL_EMBEDDING_MODEL=gemini-embedding-001
 AGENT_RETRIEVAL_EMBEDDING_DIMENSIONS=3072
 ```
 
+When creating a collection, use these settings:
+
+``` text
+Collection ID:       argusclaims
+Location:            us-central1
+Vector field:        claim_embedding
+Vector type:         dense
+Vector dimensions:   3072
+Embedding model:     gemini-embedding-001
+Update behavior:     streaming data-object writes
+```
+
+The collection’s data schema should include the fields in
+`backend/config/agent_retrieval_data_schema.json`. The vector schema is defined
+in `backend/config/agent_retrieval_vector_schema.json`. In particular, the
+stored metadata must include `claim_id`, `document_id`, and
+`document_version`, because retrieval is scoped using those fields.
+
+Collection creation is currently performed through the Google Cloud Agent
+Retrieval/Vertex AI console or its corresponding API; the exact console flow
+may vary by project/API release. After creation, verify the resource with the
+collection ID and region above, then run the repository’s retrieval smoke test
+from `backend/`:
+
+``` bash
+python app/scripts/search_agent_retrieval.py
+```
+
+That command generates a query embedding and searches the configured
+collection. It requires ADC, the retrieval variables above, and at least one
+indexed data object.
+
 Verify the configured collection and confirm that a processed document writes
 claim embeddings. Firestore remains the source of truth; Vector Search is the
 semantic retrieval layer. The older index-endpoint resources, if present, are
@@ -991,15 +1041,35 @@ behind `ContentGuardrail` and inspects user input, extracted document content,
 and generated output. Document text is untrusted content and must never alter
 agent instructions.
 
-Enable the API, create a template named `argus-production` in the chosen
-location, and grant the Cloud Run runtime account `roles/modelarmor.user` and
-`roles/modelarmor.viewer`. Then configure:
+Enable the API, then create a Model Armor template in the Google Cloud Console
+under Model Armor > Templates. Use:
+
+``` text
+Template ID:  argus-production
+Location:    us-central1
+```
+
+Enable the template detectors appropriate for the deployment, including prompt
+injection, harmful/unsafe content, and sensitive-data/PII inspection. The
+template configuration is project-specific, so do not copy a template from
+another project or commit its configuration as a credential.
+
+Grant the Cloud Run runtime account `roles/modelarmor.user` and
+`roles/modelarmor.viewer`, then configure:
 
 ``` text
 MODEL_ARMOR_ENABLED=true
 MODEL_ARMOR_PROJECT=YOUR_PROJECT_ID
 MODEL_ARMOR_LOCATION=us-central1
 MODEL_ARMOR_TEMPLATE_ID=argus-production
+```
+
+Verify that the template exists before deploying with Model Armor enabled:
+
+``` bash
+gcloud model-armor templates describe argus-production \
+  --project=YOUR_PROJECT_ID \
+  --location=us-central1
 ```
 
 The intended pipeline is:
