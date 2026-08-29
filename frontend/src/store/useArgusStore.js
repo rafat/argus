@@ -33,8 +33,10 @@ export const useArgusStore = create((set, get) => ({
   
   // Day 6 Versioning, Diffs, and Issues states
   versions: [],
+  selectedVersionId: null,
   diffs: [],
   issues: [],
+  issueEvents: [],
   pollingInterval: null,
   pollingToken: 0,
 
@@ -61,6 +63,7 @@ export const useArgusStore = create((set, get) => ({
       pollingInterval: null,
       pollingToken,
       selectedDocumentId: docId, 
+      selectedVersionId: null,
       selectedNode: null, 
       selectedEdge: null, 
       selectedIssue: null,
@@ -69,6 +72,7 @@ export const useArgusStore = create((set, get) => ({
       versions: [],
       diffs: [],
       issues: [],
+      issueEvents: [],
       uploadProgress: 0,
       uploadProgressMessage: 'Initializing document analysis...'
     });
@@ -113,16 +117,28 @@ export const useArgusStore = create((set, get) => ({
             if (!isActivePoll()) return;
             set({ pollingInterval: null, uploadProgress: 100, uploadProgressMessage: 'Processing complete!' });
             
-            // Retrieve computed claim nodes & edges
-            const graphRes = await axios.get(`${API_BASE_URL}/documents/${docId}/graph`);
+            // Retrieve computed claim nodes & edges for this specific draft version
+            const targetVerId = currentDoc.version_id;
+            const graphUrl = targetVerId 
+              ? `${API_BASE_URL}/documents/${docId}/graph?version_id=${targetVerId}`
+              : `${API_BASE_URL}/documents/${docId}/graph`;
+            const graphRes = await axios.get(graphUrl);
             if (!isActivePoll()) return;
-            set({ graphData: graphRes.data, isProcessing: false, uploadStatus: '', uploadProgress: 0, uploadProgressMessage: '' });
+            set({ 
+              graphData: graphRes.data, 
+              selectedVersionId: targetVerId || null,
+              isProcessing: false, 
+              uploadStatus: '', 
+              uploadProgress: 0, 
+              uploadProgressMessage: '' 
+            });
             
-            // Fetch revision, issue status tracks & versions
+            // Fetch revision, issue status tracks, events & versions
             get().fetchVersions(docId);
             get().fetchIssues(docId);
-            if (currentDoc.version_id) {
-              get().fetchDiffs(docId, currentDoc.version_id);
+            get().fetchIssueEvents(docId);
+            if (targetVerId) {
+              get().fetchDiffs(docId, targetVerId);
             }
           }
         }
@@ -266,6 +282,19 @@ export const useArgusStore = create((set, get) => ({
     }
   },
 
+  selectVersion: async (docId, verId) => {
+    try {
+      set({ selectedVersionId: verId, selectedNode: null, selectedEdge: null, selectedIssue: null });
+      const graphRes = await axios.get(`${API_BASE_URL}/documents/${docId}/graph?version_id=${verId}`);
+      set({ graphData: graphRes.data });
+      get().fetchDiffs(docId, verId);
+      get().fetchIssues(docId);
+      get().fetchIssueEvents(docId);
+    } catch (err) {
+      console.error("Failed to switch draft version", err);
+    }
+  },
+
   fetchDiffs: async (docId, verId) => {
     try {
       const res = await axios.get(`${API_BASE_URL}/documents/${docId}/versions/${verId}/diff`);
@@ -281,6 +310,15 @@ export const useArgusStore = create((set, get) => ({
       set({ issues: res.data.issues });
     } catch (err) {
       console.error("Failed to load issues", err);
+    }
+  },
+
+  fetchIssueEvents: async (docId) => {
+    try {
+      const res = await axios.get(`${API_BASE_URL}/documents/${docId}/issue_events`);
+      set({ issueEvents: res.data.issue_events || [] });
+    } catch (err) {
+      console.error("Failed to load issue events", err);
     }
   },
 
@@ -333,6 +371,10 @@ export const useArgusStore = create((set, get) => ({
         coachingChat: [...state.coachingChat, botMsg],
         isCoachingLoading: false
       }));
+
+      // Immediately refresh tracked issues and events so canvas badges, timeline, and stats update live
+      await get().fetchIssues(selectedDocumentId);
+      await get().fetchIssueEvents(selectedDocumentId);
     } catch (err) {
       console.error("Coaching failed", err);
       const errorMsg = {

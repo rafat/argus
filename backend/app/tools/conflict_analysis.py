@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from uuid import uuid4
 
@@ -114,8 +115,13 @@ async def analyze_claim_pairs(
     Evaluate candidate pairs and return only genuine conflicts.
     """
     conflicts: list[Conflict] = []
+    logger = logging.getLogger(__name__)
 
-    for pair in pairs:
+    for idx, pair in enumerate(pairs, 1):
+        logger.info(
+            f"[ConflictAnalysis] Evaluating pair {idx}/{len(pairs)}: "
+            f"'{pair.claim_a.text[:40]}...' vs '{pair.claim_b.text[:40]}...'"
+        )
         use_async_gemini = os.environ.get(
             "ARGUS_USE_ASYNC_GEMINI", "false"
         ).lower() in {"1", "true", "yes"}
@@ -128,6 +134,7 @@ async def analyze_claim_pairs(
             )
 
         if not resolution.is_conflict:
+            logger.info(f"[ConflictAnalysis] Pair {idx}/{len(pairs)}: No conflict detected.")
             continue
 
         document_id = pair.claim_a.document_id
@@ -138,6 +145,10 @@ async def analyze_claim_pairs(
                 "to belong to the same document."
             )
 
+        logger.info(
+            f"[ConflictAnalysis] Pair {idx}/{len(pairs)}: Genuine conflict identified! "
+            f"(severity={resolution.severity}, confidence={resolution.confidence:.2f})"
+        )
         conflicts.append(
             Conflict(
                 id=str(uuid4()),
@@ -152,4 +163,8 @@ async def analyze_claim_pairs(
             )
         )
 
+    logger.info(
+        f"[ConflictAnalysis] Finished evaluating {len(pairs)} candidate pairs. "
+        f"Found {len(conflicts)} verified conflicts."
+    )
     return conflicts

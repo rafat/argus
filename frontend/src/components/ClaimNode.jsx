@@ -47,9 +47,24 @@ const ClaimNode = ({ data, selected }) => {
           </span>
         )}
 
-        {data.open_questions && data.open_questions.length > 0 && data.conflict_count === 0 && (
-          <span className="node-alert-icon" title={`${data.open_questions.length} open questions`}>
-            ❓ {data.open_questions.length}
+        {data.issue_status === 'escalated' && (
+          <span className="node-issue-tag issue-tag-escalated" title={`Escalated issue (x${data.escalation_count || 1})`}>
+            ⚠️ Escalated
+          </span>
+        )}
+        {data.issue_status === 'persistent' && (
+          <span className="node-issue-tag issue-tag-persistent" title="Persistent issue across drafts">
+            ⏳ Persistent
+          </span>
+        )}
+        {data.issue_status === 'open' && (
+          <span className="node-issue-tag issue-tag-open" title="Open Socratic issue">
+            ⚡ Open Issue
+          </span>
+        )}
+        {data.issue_status === 'addressed' && (
+          <span className="node-issue-tag issue-tag-addressed" title="Issue resolved in revision">
+            ✓ Resolved
           </span>
         )}
       </div>

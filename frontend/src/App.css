@@ -676,3 +676,135 @@ body {
   0%, 100% { opacity: 0.6; }
   50% { opacity: 1; }
 }
+
+/* Node Issue Tags (Day 6 Revision Intelligence) */
+.node-issue-tag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.issue-tag-escalated {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #ef4444;
+}
+
+.issue-tag-persistent {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  color: #f59e0b;
+}
+
+.issue-tag-open {
+  background: rgba(96, 165, 250, 0.15);
+  border: 1px solid rgba(96, 165, 250, 0.4);
+  color: #60a5fa;
+}
+
+.issue-tag-addressed {
+  background: rgba(52, 211, 153, 0.15);
+  border: 1px solid rgba(52, 211, 153, 0.4);
+  color: #34d399;
+}
+
+/* Issue Lifecycle Timeline Stepper */
+.issue-lifecycle-timeline {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border-color);
+}
+
+.timeline-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+
+.timeline-steps {
+  display: flex;
+  flex-direction: column;
+  padding-left: 2px;
+}
+
+.timeline-step {
+  position: relative;
+  display: flex;
+  gap: 10px;
+  padding-bottom: 10px;
+}
+
+.timeline-step:last-child {
+  padding-bottom: 2px;
+}
+
+.timeline-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 4px;
+  flex-shrink: 0;
+  z-index: 2;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+}
+
+.timeline-line {
+  position: absolute;
+  left: 3px;
+  top: 12px;
+  bottom: 0;
+  width: 2px;
+  background: var(--border-color);
+  z-index: 1;
+}
+
+.timeline-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.timeline-step-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.timeline-ver {
+  font-size: 11px;
+  font-weight: 700;
+  color: #f3f4f6;
+}
+
+.timeline-status-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+}
+
+.timeline-event-type {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: capitalize;
+}
+
+.timeline-explanation {
+  font-size: 11px;
+  color: #d1d5db;
+  margin: 4px 0 0 0;
+  line-height: 1.4;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 4px 8px;
+  border-radius: 4px;
+  border-left: 2px solid var(--border-color);
+}

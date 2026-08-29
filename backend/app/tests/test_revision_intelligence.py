@@ -346,3 +346,4 @@ async def test_pubsub_broker_event_propagation():
     assert len(delivered_payloads) == 1
     assert delivered_payloads[0]["key_a"] == "val_a"
     assert delivered_payloads[0]["key_b"] == "val_b"
+

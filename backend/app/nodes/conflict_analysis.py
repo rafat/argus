@@ -34,6 +34,10 @@ async def analyze_conflicts(
         "conflict_candidate_top_k",
         5,
     )
+    min_score = node_input.get(
+        "conflict_min_similarity_score",
+        None,
+    )
 
     logger.info("--- [ADK Workflow] Generating semantic conflict candidates ---")
     generator = ConflictCandidateGenerator()
@@ -41,6 +45,7 @@ async def analyze_conflicts(
     pairs: list[ClaimPair] = generator.generate(
         claims,
         top_k=top_k,
+        min_score=min_score,
     )
     logger.info(f"--- [ADK Workflow] Found {len(pairs)} candidate claim pairs for contradiction analysis ---")
 
@@ -52,6 +57,7 @@ async def analyze_conflicts(
         {
             "claim_a_id": pair.claim_a.id,
             "claim_b_id": pair.claim_b.id,
+            "retrieval_score": pair.retrieval_score,
             "retrieval_distance": pair.retrieval_distance,
         }
         for pair in pairs

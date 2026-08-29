@@ -234,16 +234,28 @@ async def list_documents():
 
 
 @app.get("/documents/{document_id}/graph", response_model=ArgumentGraph)
-async def get_document_graph(document_id: str):
-    """Retrieve claims and conflicts, then compute centrality and coordinates using ArgumentGraphBuilder."""
+async def get_document_graph(document_id: str, version_id: str | None = None):
+    """Retrieve claims and conflicts for the specified draft version (or active draft), then compute centrality and coordinates using ArgumentGraphBuilder."""
     try:
         repo = FirestoreRepository()
         
-        claims = repo.get_document_claims(document_id)
-        if not claims:
-            doc = repo.get_document(document_id)
-            if not doc:
+        doc = repo.get_document(document_id)
+        if not doc:
+            claims = repo.get_document_claims(document_id)
+            if not claims:
                 raise HTTPException(status_code=404, detail="Document not found")
+            target_version_id = version_id
+        else:
+            target_version_id = version_id or doc.version_id
+
+        if target_version_id:
+            claims = repo.get_version_claims(document_id, target_version_id)
+            if not claims:
+                claims = repo.get_document_claims(document_id)
+        else:
+            claims = repo.get_document_claims(document_id)
+
+        if not claims:
             return ArgumentGraph(nodes=[], edges=[])
             
         conflicts = repo.get_conflicts(document_id)
@@ -404,13 +416,23 @@ async def post_document_coaching(document_id: str, req: CoachingRequest):
                 ),
             }
         
-        # Persist Socratic Issues and Events
+        # Persist Socratic Issues and Events (deduplicating against existing questions for this claim)
+        existing_issues = repo.get_issues(document_id)
+        existing_questions = {
+            i.question_text.strip().lower()
+            for i in existing_issues
+            if i.claim_id == coaching_claim_id and i.question_text
+        }
+
         new_issues = []
         new_events = []
         version_id = doc.version_id
 
         # 1. Socratic Specialists Questions
-        for q in coaching_feedback.socratic_questions:
+        for q in (coaching_feedback.socratic_questions or []):
+            if not q or q.strip().lower() in existing_questions:
+                continue
+            existing_questions.add(q.strip().lower())
             issue_id = f"issue-soc-{uuid4()}"
             issue = Issue(
                 id=issue_id,
@@ -419,7 +441,7 @@ async def post_document_coaching(document_id: str, req: CoachingRequest):
                 claim_id=coaching_claim_id,
                 section="Socratic Analysis",
                 issue_type="socratic",
-                description="Socratic specialist flagged structural weakness or premise assumptions.",
+                description="Structural weakness or premise assumptions flagged by Socratic specialist.",
                 question_text=q,
                 question_type="socratic",
                 status="open",
@@ -439,7 +461,10 @@ async def post_document_coaching(document_id: str, req: CoachingRequest):
             new_events.append(event)
 
         # 2. Evidence Specialists Gaps
-        for sugg in coaching_feedback.evidence_suggestions:
+        for sugg in (coaching_feedback.evidence_suggestions or []):
+            if not sugg or sugg.strip().lower() in existing_questions:
+                continue
+            existing_questions.add(sugg.strip().lower())
             issue_id = f"issue-ev-{uuid4()}"
             issue = Issue(
                 id=issue_id,
@@ -448,7 +473,7 @@ async def post_document_coaching(document_id: str, req: CoachingRequest):
                 claim_id=coaching_claim_id,
                 section="Evidence Analysis",
                 issue_type="evidence",
-                description=coaching_feedback.evidence_findings or "Empirical citation review findings.",
+                description="Empirical citation or validation gap identified by Evidence specialist.",
                 question_text=sugg,
                 question_type="evidence",
                 status="open",
@@ -468,7 +493,10 @@ async def post_document_coaching(document_id: str, req: CoachingRequest):
             new_events.append(event)
 
         # 3. Argument Specialists Logical flaws
-        for flaw in coaching_feedback.logical_flaws:
+        for flaw in (coaching_feedback.logical_flaws or []):
+            if not flaw or flaw.strip().lower() in existing_questions:
+                continue
+            existing_questions.add(flaw.strip().lower())
             issue_id = f"issue-log-{uuid4()}"
             issue = Issue(
                 id=issue_id,
@@ -477,7 +505,7 @@ async def post_document_coaching(document_id: str, req: CoachingRequest):
                 claim_id=coaching_claim_id,
                 section="Logic Analysis",
                 issue_type="logic",
-                description=f"Logical flaw caught by specialist. Coherence score: {coaching_feedback.coherence_score}",
+                description="Logical fallacy or premise coherence flaw identified by Argument specialist.",
                 question_text=flaw,
                 question_type="logic",
                 status="open",

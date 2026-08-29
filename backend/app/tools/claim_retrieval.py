@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 from google.api_core.exceptions import AlreadyExists, NotFound
 from google.cloud import vectorsearch_v1
@@ -197,9 +200,29 @@ class AgentRetrievalClaimIndex:
             data_object = result.data_object
             data = dict(data_object.data)
 
+            raw_name = getattr(data_object, "name", "")
+            name_tail = (
+                raw_name.rsplit("/", 1)[-1]
+                if isinstance(raw_name, str) and "/" in raw_name
+                else (raw_name if isinstance(raw_name, str) else "")
+            )
+
+            claim_id = (
+                getattr(data_object, "data_object_id", None)
+                or data.get("claim_id")
+                or name_tail
+            )
+
+            if not claim_id or not str(claim_id).strip():
+                logger.warning(
+                    "[ClaimRetrieval] Skipping candidate with unresolved claim_id "
+                    f"(data_object={data_object!r})"
+                )
+                continue
+
             candidates.append(
                 RetrievalCandidate(
-                    claim_id=data_object.data_object_id,
+                    claim_id=str(claim_id).strip(),
                     distance=float(result.distance),
                     document_id=data.get("document_id"),
                     document_version=data.get("document_version"),

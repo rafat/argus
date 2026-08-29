@@ -86,6 +86,8 @@ Argus-specific coaching and anti-ghostwriting policy decisions.
 
 ## Architecture
 
+![Argus System Architecture](resources/architecture.png)
+
 ```text
 User browser
     │ HTTPS
@@ -183,4 +185,3 @@ are accessed by the backend.
 ## Documentation
 
 - [Setup and deployment guide](setup.md)
-- [Current deployment and operations notes](deployment.txt)

@@ -38,14 +38,18 @@ function App() {
     uploadDocument,
     setSelectedNode,
     setSelectedEdge,
+    setSelectedIssue,
     clearSelection,
     coachingChat,
     isCoachingLoading,
     sendCoachingMessage,
     clearCoachingChat,
     versions,
+    selectedVersionId,
+    selectVersion,
     diffs,
     issues,
+    issueEvents,
     uploadRevision,
   } = useArgusStore();
 
@@ -61,6 +65,58 @@ function App() {
   const [activeTab, setActiveTab] = useState('details');
   const [chatInput, setChatInput] = useState('');
   const chatEndRef = useRef(null);
+
+  // Helper to render Issue Lifecycle Timeline Stepper
+  const renderIssueTimeline = (issueId) => {
+    const events = issueEvents
+      .filter((e) => e.issue_id === issueId)
+      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+    if (events.length === 0) return null;
+
+    const statusColors = {
+      open: '#60a5fa',
+      addressed: '#34d399',
+      persistent: '#f59e0b',
+      escalated: '#ef4444',
+    };
+
+    return (
+      <div className="issue-lifecycle-timeline">
+        <div className="timeline-title">📜 Lifecycle Audit Trail ({events.length} draft{events.length > 1 ? 's' : ''})</div>
+        <div className="timeline-steps">
+          {events.map((ev, idx) => {
+            const ver = versions.find((v) => v.version_id === ev.version_id);
+            const verLabel = ver ? `Draft V${ver.version_number}` : `Draft ${ev.version_id?.substring(0, 6)}...`;
+            const isLatest = idx === events.length - 1;
+            const color = statusColors[ev.new_status] || '#9ca3af';
+
+            return (
+              <div key={ev.id || idx} className={`timeline-step ${isLatest ? 'latest' : ''}`}>
+                <div className="timeline-dot" style={{ background: color, borderColor: color }} />
+                {idx < events.length - 1 && <div className="timeline-line" />}
+                <div className="timeline-content">
+                  <div className="timeline-step-header">
+                    <span className="timeline-ver">{verLabel}</span>
+                    <span
+                      className="timeline-status-badge"
+                      style={{ color: color, background: `${color}1a`, borderColor: `${color}40` }}
+                    >
+                      {ev.new_status.toUpperCase()}
+                    </span>
+                    <span className="timeline-event-type">{ev.event_type}</span>
+                  </div>
+                  {ev.explanation && (
+                    <p className="timeline-explanation">{ev.explanation}</p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
 
   // Auto-scroll chat console when new messages arrive
   useEffect(() => {
@@ -131,10 +187,10 @@ function App() {
     (n) => n.data?.status === 'unsubstantiated'
   ).length;
 
-  // --- Graph Dimming & Highlighting Logic (Day 4G) ---
-  const hasSelection = !!selectedNode || !!selectedEdge;
+  // --- Graph Dimming & Highlighting Logic (Day 4G & Day 6) ---
+  const hasSelection = !!selectedNode || !!selectedEdge || !!selectedIssue;
 
-  // Process nodes: Filter by status, then apply dimming if there is an active selection
+  // Process nodes: Filter by status, attach issue metadata, then apply dimming if there is an active selection
   const processedNodes = graphData.nodes
     .filter((node) => {
       if (statusFilter === 'supported') return node.data?.status === 'supported';
@@ -142,6 +198,25 @@ function App() {
       return true;
     })
     .map((node) => {
+      // Attach associated issues to node data for canvas indicators
+      const claimIssues = issues.filter((i) => i.claim_id === node.id);
+      let issue_status = null;
+      let escalation_count = 0;
+      if (claimIssues.length > 0) {
+        if (claimIssues.some((i) => i.status === 'escalated')) {
+          issue_status = 'escalated';
+          escalation_count = Math.max(
+            ...claimIssues.filter((i) => i.status === 'escalated').map((i) => i.escalation_count || 1)
+          );
+        } else if (claimIssues.some((i) => i.status === 'persistent')) {
+          issue_status = 'persistent';
+        } else if (claimIssues.some((i) => i.status === 'open')) {
+          issue_status = 'open';
+        } else if (claimIssues.every((i) => i.status === 'addressed')) {
+          issue_status = 'addressed';
+        }
+      }
+
       let isDimmed = false;
       if (hasSelection) {
         if (selectedNode) {
@@ -150,11 +225,20 @@ function App() {
         } else if (selectedEdge) {
           // Highlight BOTH claims involved in the selected conflict edge
           isDimmed = selectedEdge.source !== node.id && selectedEdge.target !== node.id;
+        } else if (selectedIssue) {
+          // Highlight the claim node associated with the selected issue (if mapped)
+          isDimmed = selectedIssue.claim_id ? selectedIssue.claim_id !== node.id : false;
         }
       }
       return {
         ...node,
-        selected: selectedNode?.id === node.id,
+        data: {
+          ...node.data,
+          issue_status,
+          escalation_count,
+          claim_issues: claimIssues,
+        },
+        selected: selectedNode?.id === node.id || (selectedIssue?.claim_id === node.id),
         style: {
           ...node.style,
           opacity: isDimmed ? 0.25 : 1.0,
@@ -231,9 +315,44 @@ function App() {
           <div className="sidebar-section">
             <h3 className="sidebar-section-title">Document Stats</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
+              {(() => {
+                const activeVer = versions.find(v => v.version_id === selectedVersionId) || versions[versions.length - 1];
+                return activeVer ? (
+                  <div style={{ color: 'var(--accent-color)', fontWeight: 600, paddingBottom: '4px', borderBottom: '1px solid var(--border-color)' }}>
+                    Viewing: Draft V{activeVer.version_number}
+                  </div>
+                ) : null;
+              })()}
               <div>Total Claims: <strong>{totalClaims}</strong></div>
               <div>Conflicts: <strong style={{ color: 'var(--color-danger)' }}>{totalConflicts}</strong></div>
               <div>Needs Evidence: <strong style={{ color: 'var(--color-warning)' }}>{unsubstantiatedClaims}</strong></div>
+              {issues.length > 0 && (
+                <div style={{ paddingTop: '6px', borderTop: '1px dashed var(--border-color)', marginTop: '2px' }}>
+                  <div style={{ marginBottom: '4px' }}>Tracked Issues: <strong>{issues.length}</strong></div>
+                  <div style={{ display: 'flex', gap: '4px', fontSize: '11px', flexWrap: 'wrap' }}>
+                    {issues.filter(i => i.status === 'escalated').length > 0 && (
+                      <span style={{ color: '#ef4444', background: 'rgba(239, 68, 68, 0.12)', padding: '1px 5px', borderRadius: '3px', fontWeight: 'bold' }}>
+                        ⚠️ {issues.filter(i => i.status === 'escalated').length} escalated
+                      </span>
+                    )}
+                    {issues.filter(i => i.status === 'persistent').length > 0 && (
+                      <span style={{ color: '#f59e0b', background: 'rgba(245, 158, 11, 0.12)', padding: '1px 5px', borderRadius: '3px', fontWeight: 'bold' }}>
+                        ⏳ {issues.filter(i => i.status === 'persistent').length} persistent
+                      </span>
+                    )}
+                    {issues.filter(i => i.status === 'addressed').length > 0 && (
+                      <span style={{ color: '#34d399', background: 'rgba(52, 211, 153, 0.12)', padding: '1px 5px', borderRadius: '3px', fontWeight: 'bold' }}>
+                        ✓ {issues.filter(i => i.status === 'addressed').length} resolved
+                      </span>
+                    )}
+                    {issues.filter(i => i.status === 'open').length > 0 && (
+                      <span style={{ color: '#60a5fa', background: 'rgba(96, 165, 250, 0.12)', padding: '1px 5px', borderRadius: '3px', fontWeight: 'bold' }}>
+                        ⚡ {issues.filter(i => i.status === 'open').length} open
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -470,12 +589,73 @@ function App() {
                     )}
                   </div>
 
+                  {selectedNode.data?.claim_issues && selectedNode.data.claim_issues.length > 0 && (
+                    <div className="details-section">
+                      <span className="details-section-title">
+                        Associated Socratic Issues ({selectedNode.data.claim_issues.length})
+                      </span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {selectedNode.data.claim_issues.map((ci) => {
+                          const statusColors = {
+                            open: '#60a5fa',
+                            addressed: '#34d399',
+                            persistent: '#f59e0b',
+                            escalated: '#ef4444',
+                          };
+                          return (
+                            <div
+                              key={ci.id}
+                              className="details-text-box"
+                              style={{
+                                borderLeft: `3px solid ${statusColors[ci.status] || '#9ca3af'}`,
+                                background: 'rgba(255,255,255,0.02)',
+                                cursor: 'pointer',
+                              }}
+                              onClick={() => {
+                                setSelectedIssue(ci);
+                                setActiveTab('details');
+                              }}
+                            >
+                              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '11px' }}>
+                                <span style={{ fontWeight: 'bold', color: statusColors[ci.status], textTransform: 'uppercase' }}>
+                                  {ci.issue_type?.toUpperCase()} &bull; {ci.status}
+                                </span>
+                                {ci.escalation_count > 0 && (
+                                  <span style={{ color: '#ef4444', fontWeight: 'bold' }}>⚠️ Escalated x{ci.escalation_count}</span>
+                                )}
+                              </div>
+                              <p style={{ margin: '2px 0 4px 0', fontSize: '12px', color: '#fca5a5' }}>
+                                ❓ {ci.question_text || ci.description}
+                              </p>
+                              {ci.description && ci.description !== ci.question_text && (
+                                <p style={{ margin: '0', fontSize: '11px', color: '#9ca3af' }}>
+                                  {ci.description}
+                                </p>
+                              )}
+                              <div style={{ fontSize: '10px', color: '#60a5fa', marginTop: '6px' }}>
+                                Click to inspect lifecycle history &rarr;
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="socratic-coaching-box">
                     <span className="socratic-title">💡 Socratic Coaching Partner</span>
                     <p className="socratic-text">
                       Explore structural weaknesses, expand missing assumptions, or challenge other parts of your draft.
                     </p>
-                    <button className="socratic-btn" onClick={() => setActiveTab('coaching')}>
+                    <button
+                      className="socratic-btn"
+                      onClick={() => {
+                        setActiveTab('coaching');
+                        sendCoachingMessage(
+                          `Please analyze this claim: "${selectedNode.data?.text || ''}". What structural weaknesses, missing evidence, or unstated assumptions should I address?`
+                        );
+                      }}
+                    >
                       Trigger Socratic Team
                     </button>
                   </div>
@@ -508,26 +688,58 @@ function App() {
                     <p className="socratic-text">
                       These claims present logically incompatible conclusions. Let's inspect the underlying premises to help you rewrite this.
                     </p>
-                    <button className="socratic-btn" onClick={() => setActiveTab('coaching')}>
+                    <button
+                      className="socratic-btn"
+                      onClick={() => {
+                        setActiveTab('coaching');
+                        sendCoachingMessage(
+                          `Please analyze this argument contradiction between the two conflicting claims. How can I resolve this conflict?`
+                        );
+                      }}
+                    >
                       Start Socratic Coaching
                     </button>
                   </div>
                 </div>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', overflowY: 'auto', flex: 1 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto', flex: 1 }}>
                   <div className="details-header">
-                    <span className="details-location">TRACKED ISSUE</span>
+                    <span className="details-location">TRACKED ISSUE &bull; {selectedIssue.section || 'General'}</span>
                     <h2 className="details-title">{selectedIssue.issue_type.toUpperCase()} Issue</h2>
                   </div>
                   <div className="details-section">
                     <span className="details-section-title">Status</span>
-                    <div className="details-text-box">{selectedIssue.status.toUpperCase()}</div>
+                    <div className="details-text-box" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 'bold', textTransform: 'uppercase' }}>{selectedIssue.status}</span>
+                      {selectedIssue.escalation_count > 0 && (
+                        <span style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '12px' }}>
+                          ⚠️ Escalated x{selectedIssue.escalation_count}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="details-section">
-                    <span className="details-section-title">Coaching question</span>
-                    <div className="details-text-box">{selectedIssue.question_text}</div>
+                    <span className="details-section-title">Concern Description</span>
+                    <div className="details-text-box">{selectedIssue.description}</div>
                   </div>
-                  <button className="socratic-btn" onClick={() => setActiveTab('coaching')}>
+                  <div className="details-section">
+                    <span className="details-section-title">Socratic Question</span>
+                    <div className="details-text-box" style={{ color: '#fca5a5', background: 'rgba(239, 68, 68, 0.05)', borderLeft: '4px solid var(--color-danger)' }}>
+                      ❓ {selectedIssue.question_text}
+                    </div>
+                  </div>
+
+                  {renderIssueTimeline(selectedIssue.id)}
+
+                  <button
+                    className="socratic-btn"
+                    onClick={() => {
+                      setActiveTab('coaching');
+                      sendCoachingMessage(
+                        `Let's work through this ${selectedIssue.issue_type} issue: "${selectedIssue.question_text}". How should I strengthen this argument?`
+                      );
+                    }}
+                  >
                     Coach me on this issue
                   </button>
                 </div>
@@ -663,22 +875,44 @@ function App() {
                       Gathering draft records...
                     </div>
                   ) : (
-                    versions.map((ver) => (
-                      <div key={ver.version_id} className="details-text-box" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                          <strong>Draft V{ver.version_number}</strong>
-                          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                            {new Date(ver.created_at).toLocaleTimeString()}
-                          </span>
-                        </div>
-                        <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>ID: {ver.version_id.substring(0, 8)}...</div>
-                        {ver.parent_version_id && (
-                          <div style={{ fontSize: '12px', color: '#fbcfe8', marginTop: '4px' }}>
-                            ← Parent draft ID: {ver.parent_version_id.substring(0, 8)}...
+                    versions.map((ver, idx) => {
+                      const isSelected = selectedVersionId 
+                        ? ver.version_id === selectedVersionId 
+                        : idx === versions.length - 1;
+                      return (
+                        <div 
+                          key={ver.version_id} 
+                          className="details-text-box" 
+                          onClick={() => selectVersion(selectedDocumentId, ver.version_id)}
+                          style={{ 
+                            background: isSelected ? 'rgba(99, 102, 241, 0.15)' : 'var(--bg-secondary)', 
+                            border: isSelected ? '1px solid var(--accent-color)' : '1px solid var(--border-color)',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease',
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <strong>Draft V{ver.version_number}</strong>
+                              {isSelected && (
+                                <span style={{ fontSize: '10px', background: 'var(--accent-color)', color: '#fff', padding: '1px 6px', borderRadius: '4px' }}>
+                                  Active View
+                                </span>
+                              )}
+                            </div>
+                            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                              {new Date(ver.created_at).toLocaleTimeString()}
+                            </span>
                           </div>
-                        )}
-                      </div>
-                    ))
+                          <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>ID: {ver.version_id.substring(0, 8)}...</div>
+                          {ver.parent_version_id && (
+                            <div style={{ fontSize: '12px', color: '#fbcfe8', marginTop: '4px' }}>
+                              ← Parent draft ID: {ver.parent_version_id.substring(0, 8)}...
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
                   )}
                 </div>
 
@@ -737,16 +971,34 @@ function App() {
                           <div style={{ background: 'rgba(255,255,255,0.04)', padding: '6px', borderRadius: '4px', fontSize: '11px', marginTop: '6px', color: '#fca5a5' }}>
                             ❓ {issue.question_text}
                           </div>
-                          <button
-                            className="socratic-btn"
-                            style={{ marginTop: '10px', width: '100%' }}
-                            onClick={() => {
-                              useArgusStore.getState().setSelectedIssue(issue);
-                              setActiveTab('coaching');
-                            }}
-                          >
-                            Coach me on this issue
-                          </button>
+
+                          {renderIssueTimeline(issue.id)}
+
+                          <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                            <button
+                              className="socratic-btn"
+                              style={{ flex: 1 }}
+                              onClick={() => {
+                                setSelectedIssue(issue);
+                                setActiveTab('coaching');
+                                sendCoachingMessage(
+                                  `Let's work through this ${issue.issue_type} issue: "${issue.question_text}". How should I strengthen this argument?`
+                                );
+                              }}
+                            >
+                              💡 Coach on Issue
+                            </button>
+                            <button
+                              className="tab-btn"
+                              style={{ padding: '6px 12px', fontSize: '12px', border: '1px solid var(--border-color)', borderRadius: '4px' }}
+                              onClick={() => {
+                                setSelectedIssue(issue);
+                                setActiveTab('details');
+                              }}
+                            >
+                              🔍 Inspect
+                            </button>
+                          </div>
                         </div>
                       );
                     })}

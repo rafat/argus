@@ -232,6 +232,57 @@ def test_search_similar_claims_removes_self():
     assert results[0].distance == 0.8
 
 
+def test_search_resolves_claim_id_fallbacks():
+    search_client = Mock()
+
+    # Result 1: data_object_id is None, falls back to data["claim_id"]
+    result_1 = Mock()
+    result_1.data_object.data_object_id = None
+    result_1.data_object.name = "projects/p/locations/l/collections/c/dataObjects/ignored-name"
+    result_1.data_object.data = {
+        "claim_id": "resolved-from-data",
+        "document_id": "doc-1",
+        "text": "Claim text",
+    }
+    result_1.distance = 0.85
+
+    # Result 2: data_object_id and data["claim_id"] are None, falls back to name tail
+    result_2 = Mock()
+    result_2.data_object.data_object_id = None
+    result_2.data_object.name = "projects/p/locations/l/collections/c/dataObjects/resolved-from-name"
+    result_2.data_object.data = {
+        "document_id": "doc-1",
+        "text": "Claim text 2",
+    }
+    result_2.distance = 0.75
+
+    # Result 3: Completely unresolved / empty ID -> should be skipped
+    result_3 = Mock()
+    result_3.data_object.data_object_id = None
+    result_3.data_object.name = ""
+    result_3.data_object.data = {}
+    result_3.distance = 0.50
+
+    response = Mock()
+    response.results = [result_1, result_2, result_3]
+    search_client.search_data_objects.return_value = response
+
+    index = AgentRetrievalClaimIndex(
+        client=Mock(),
+        embedding_service=FakeEmbeddingService(),
+        project_id="argus-505505",
+        location="us-central1",
+        collection_id="argusclaims",
+    )
+    index.search_client = search_client
+
+    results = index.search("test query", top_k=5)
+
+    assert len(results) == 2
+    assert results[0].claim_id == "resolved-from-data"
+    assert results[1].claim_id == "resolved-from-name"
+
+
 @pytest.mark.integration
 def test_agent_retrieval_existing_test_object():
     import os
