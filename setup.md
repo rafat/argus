@@ -121,7 +121,7 @@ Official documentation:
 Clone the public repository:
 
 ``` bash
-git clone https://github.com/YOUR_GITHUB_USERNAME/argus.git
+git clone https://github.com/rafat/argus.git
 cd argus
 ```
 
@@ -613,9 +613,6 @@ Important:
 -   `GOOGLE_APPLICATION_CREDENTIALS`, `GOOGLE_API_KEY`, and
     `GEMINI_API_KEY` are not required for this Vertex AI/ADC setup.
 
-Never commit `.env`.
-
-Commit only `.env.example` with placeholder values.
 
 ------------------------------------------------------------------------
 
